@@ -1,0 +1,6 @@
+name = Assembla Integration Module
+description = This module contains Assembla Integration Wrapper.
+core = 7.x
+package = "MyFunctions"
+
+version = "7.x-X.X"

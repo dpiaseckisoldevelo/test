@@ -1,0 +1,326 @@
+<?php
+/**
+* Function Description
+* @param function_parameter
+* @returns function output description
+*/
+
+	/* Test cred
+	$milestone = "5959693";
+	$api_secret= "2c78c6088e9d6523ea3873af79e46750bbce5269";
+	$api_key = "b20444aee8f3e3bc3465";
+	$api_url = "https://api.assembla.com/v1/spaces/testowy-/tickets.json";
+	*/
+	
+	$attachmentFileArray = array();
+	$tagFileArray = array();
+	
+	function downloadAttachments($number) {
+		$it = 0;
+		global $attachmentFileArray;
+		
+		//AssemblaCredentials
+		$apiSecret= "defc91a1a0d4769f7bde816a51a39e3e52fc519f";
+		$apiKey = "4cf179673ff6aafe9445";
+		$url = "https://api.assembla.com/v1/spaces/sd_news/tickets/".$number."/attachments.json";
+		
+		$ch2 = curl_init();
+		curl_setopt($ch2, CURLOPT_URL, $url);
+		curl_setopt($ch2, CURLOPT_HTTPGET, TRUE);
+		curl_setopt($ch2, CURLOPT_SSL_VERIFYPEER,FALSE);
+		curl_setopt($ch2, CURLOPT_SSL_VERIFYHOST,FALSE);
+		curl_setopt($ch2, CURLOPT_RETURNTRANSFER, TRUE);
+		curl_setopt($ch2, CURLOPT_HTTPHEADER, array(
+			"Content-type: application/json",
+			"X-Api-Secret: $apiSecret",
+			"X-Api-Key: $apiKey"
+		));
+		
+		$attachments = json_decode(curl_exec($ch2));
+
+		curl_close($ch2);
+		$attachmentBin = array();
+		$attachmentName = array();
+
+		//iterate throughout attachments for ticket
+		foreach ($attachments as &$att) {
+			
+			$ch3 = curl_init();
+			curl_setopt($ch3, CURLOPT_URL, $att->url);
+			curl_setopt($ch3, CURLOPT_HTTPGET, TRUE);
+			curl_setopt($ch3, CURLOPT_SSL_VERIFYPEER,FALSE);
+			curl_setopt($ch3, CURLOPT_SSL_VERIFYHOST,FALSE);
+			curl_setopt($ch3, CURLOPT_RETURNTRANSFER, TRUE);
+			curl_setopt($ch3, CURLOPT_BINARYTRANSFER,TRUE);
+			curl_setopt($ch3, CURLOPT_FOLLOWLOCATION,TRUE);
+			curl_setopt($ch3, CURLOPT_HTTPHEADER, array(
+				"X-Api-Secret: $apiSecret",
+				"X-Api-Key: $apiKey"
+				));
+			$attachmentBin[$it] = (curl_exec($ch3));
+			$attachmentName[$it] = $att->name;
+			
+			$success = file_save_data($attachmentBin[$it],'public://news/#'.$number.'_'.$it.'_'.$attachmentName[$it],FILE_EXISTS_REPLACE);
+			
+			$attachmentFileArray[$it] = $success;
+			$it++;
+			curl_close($ch3);
+			
+		}	
+
+	}
+	
+	function downloadTags($number) {
+		$it = 0;
+		global $tagsFileArray;
+		
+		//AssemblaCredentials
+		$apiSecret= "defc91a1a0d4769f7bde816a51a39e3e52fc519f";
+		$apiKey = "4cf179673ff6aafe9445";
+		$url = "https://api.assembla.com/v1/spaces/sd_news/tickets/".$number."/tags.json";
+		
+		$ch2 = curl_init();
+		curl_setopt($ch2, CURLOPT_URL, $url);
+		curl_setopt($ch2, CURLOPT_HTTPGET, TRUE);
+		curl_setopt($ch2, CURLOPT_SSL_VERIFYPEER,FALSE);
+		curl_setopt($ch2, CURLOPT_SSL_VERIFYHOST,FALSE);
+		curl_setopt($ch2, CURLOPT_RETURNTRANSFER, TRUE);
+		curl_setopt($ch2, CURLOPT_HTTPHEADER, array(
+			"Content-type: application/json",
+			"X-Api-Secret: $apiSecret",
+			"X-Api-Key: $apiKey"
+		));
+		
+		$tags = json_decode(curl_exec($ch2));
+		curl_close($ch2);
+		
+		//iterate throughout attachments for ticket
+		foreach ($tags as &$tag) {
+			if ($tag->state == 2) {
+				$tagsFileArray[$it] = getTidFromTermName($tag->name);
+				$it++;
+			}
+		}
+
+	}
+	
+	function operateNode($jObj,$nid) {
+		//if $nid = false - create node, if value - update;
+	
+		global $attachmentFileArray;
+		global $tagsFileArray;
+		
+
+		if($nid) {
+			$node = node_load($nid); // ...where $nid is the node id
+			$node->nid = $nid;
+			deleteAttachments($node);
+		}
+		else {
+			$node = new stdClass(); // Create a new node object
+			$node->type = "article"; // Or page, or whatever content type you like
+			node_object_prepare($node); // Set some default values
+			$node->path['pathauto'] = TRUE;
+			
+		}
+		
+		downloadAttachments($jObj->number);
+		downloadTags($jObj->number);
+		
+		$it2 = 0;
+		foreach ($tagsFileArray as &$tag) {
+			$node->field_tags[LANGUAGE_NONE][$it2]['tid'] = $tag;
+			$it2++;			
+		}
+
+		$it = 0;
+		foreach ($attachmentFileArray as &$img) {
+			$file = (object) array(
+				'fid' => $img->fid,
+				'uid' => 1,
+				'uri' => $img->uri,
+				'filename' => $img->filename,
+				'filemime' => $img->filemime,
+				'status' => 1,
+				'display' => 1,
+			  );	  
+			 $node->field_image[LANGUAGE_NONE][$it] = (array)$file;
+			 $it++;
+		}
+		
+		$node->title    = $jObj->summary;
+		$node->language = LANGUAGE_NONE; // Or e.g. 'en' if locale is enabled
+
+		$node->uid = 58; // UID of the author of the node; or use $node->name 58- SolDevelo
+
+		$node->body[$node->language][0]['value']   = $jObj->description;
+		$node->body[$node->language][0]['format']  = 'filtered_html';
+		$node->created = strtotime($jObj->updated_at);
+		//to avoid nid conflicts to nid is added 1000.
+		$node->vid = $jObj->number+1000;
+		
+		node_save($node);
+	};
+
+	function searchNode($nodesArray,$searchId) {
+		$iterator = 0;
+		foreach ($nodesArray as &$node) {
+			if ($node->vid == $searchId) {
+				return $node->nid;
+			}
+			$iterator++;
+		}
+		return false;
+	}
+	
+	function deleteAttachments ($node) {
+		foreach ($node->field_image[$node->language] as &$img) {
+			$filefoo = file_load($img[fid]);
+			if($filefoo) {
+				var_dump($filefoo);
+				$result = file_delete($filefoo,1);
+				unset($filefoo);	
+			}
+			else {
+				return false;
+			}
+		}
+		return true;
+	}
+	
+	function getTidFromTermName($term_name) {
+		$vocabulary = 'tags';
+		$arr_terms = taxonomy_get_term_by_name($term_name, $vocabulary);
+		if (!empty($arr_terms)) {
+			$arr_terms = array_values($arr_terms);
+			$tid = $arr_terms[0]->tid;
+		}
+		else {
+			$vobj = taxonomy_vocabulary_machine_name_load($vocabulary);
+			$term = new stdClass();
+			$term->name = $term_name;
+			$term->vid = $vobj->vid;
+			$term->path['pathauto'] = TRUE;
+			taxonomy_term_save($term);
+			$tid = $term->tid;
+		}
+		return $tid;
+	}
+
+	function assemblapull_cron() {
+	
+	//AssemblaCredentials
+	$apiSecret= "defc91a1a0d4769f7bde816a51a39e3e52fc519f";
+	$apiKey = "4cf179673ff6aafe9445";
+	/*
+		sort order: desc;
+		sort by: ticket number;
+		tickets per page: 10000 (should be inifinte);
+		report: 4 - only closed tickets;
+				0 - all;
+
+	*/
+	$apiUrlTicket = "https://api.assembla.com/v1/spaces/sd_news/tickets.json?sort_order=desc&sort_by=number&per_page=100&report=0";
+	$apiUrlAttachmentDownload = " https://api.assembla.com/v1/spaces/sd_news/tickets/";
+	$apiUrlTagsDownload = " https://api.assembla.com/v1/spaces/sd_news/tickets/";
+	
+	//SubmissionLog2File
+	$subLog = fopen('news-counter.txt', "a+");
+	$pull = false;
+	
+	if ($subLog) {
+		$lastNumber = fgets($subLog);
+
+		//get list of tickets
+		$ch = curl_init();
+		curl_setopt($ch, CURLOPT_URL, $apiUrlTicket);
+		curl_setopt($ch, CURLOPT_HTTPGET, TRUE);
+		curl_setopt($ch, CURLOPT_SSL_VERIFYPEER,FALSE);
+		curl_setopt($ch, CURLOPT_SSL_VERIFYHOST,FALSE);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+		curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+			"Content-type: application/xml",
+			"X-Api-Secret: $apiSecret",
+			"X-Api-Key: $apiKey"
+		));
+		
+		$jsonTickets = json_decode(curl_exec($ch));
+		curl_close($ch);
+		
+		
+		//get list of nodes
+		$nids = db_select('node', 'n')
+		->fields('n', array('nid'))
+		->fields('n', array('type'))
+		->condition('n.type', 'article')
+		->execute()
+		->fetchCol(); // returns an indexed array
+		$nodes = node_load_multiple($nids);
+
+		if ($jsonTickets != null && $nodes != null) {	
+			foreach ($jsonTickets as &$jObj) {
+				//node delete
+				if($jObj->status !== "Fixed") {
+					$result = searchNode($nodes, ($jObj->number +1000));
+					//node found
+					if ($result) {
+						node_delete($nodes[$result]->nid);
+						//get list of nodes again
+						$nids = db_select('node', 'n')
+						->fields('n', array('nid'))
+						->fields('n', array('type'))
+						->condition('n.type', 'article')
+						->execute()
+						->fetchCol(); // returns an indexed array
+						$nodes = node_load_multiple($nids);
+					}
+				}
+				if($jObj->status == "Fixed") {
+					$result = searchNode($nodes, ($jObj->number +1000));
+					//node found
+					if ($result) {
+						//needs update
+						if($nodes[$result]->created < strtotime($jObj->updated_at)) {
+							operateNode($jObj,$result);
+						}
+					}
+					else {	
+						operateNode($jObj,$result);
+					}
+				}											
+			}
+			//write progress to log file
+			fclose($subLog);
+			$subLog = fopen('assembla-pull-log.txt', "a+");
+			date_default_timezone_set("Europe/Warsaw"); 
+			$data =  date('l jS \of F Y h:i:s A');
+			$content = 'Cron executed at: '. $data . PHP_EOL;
+			fwrite($subLog,$content);
+
+		}	
+	}
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+
+}
+
+
+?>

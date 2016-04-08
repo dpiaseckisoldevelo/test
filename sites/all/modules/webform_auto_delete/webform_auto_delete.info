@@ -1,0 +1,8 @@
+name = Webform auto delete
+description = Automatically delete webform submissions after a set period of time
+package = Webform
+core = 7.x
+files[] = webform_auto_delete.module
+files[] = webform_auto_delete.test
+
+dependencies[] = webform

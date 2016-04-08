@@ -1,0 +1,6 @@
+name = ZOHO CRM Integration Module
+description = This module contains ZOHO CRM Integration Wrapper.
+core = 7.x
+package = "MyFunctions"
+
+version = "7.x-1.0"

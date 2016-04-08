@@ -1,0 +1,38 @@
+<?php
+
+/**
+ * @file
+ * Functional tests for the Webform auto delete module.
+ */
+
+/* nothing to see here, move along
+
+// TODO: change class name
+// TODO: extend WebformTestCase?
+class XMLViewsFieldsTest extends DrupalWebTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Webform auto delete',
+      'description' => 'Functional tests for the Webform auto delete module.',
+      'group' => 'Webform',
+    );
+  }
+
+  function setUp($modules = array()) {
+    $modules[] = 'webform';
+    parent::setUp($modules);
+  }
+  
+  function testAutoDelete() {
+  	// create a webform with auto delete
+  	// create two submissions
+  	// change the submitted date of the first submission to make it old
+  	// check that both submissions are visible
+  	// run cron
+  	// check that the old submission is gone
+  }
+  
+}
+
+*/

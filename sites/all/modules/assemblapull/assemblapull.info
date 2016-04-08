@@ -1,0 +1,6 @@
+name = Assembla Pull Content Module
+description = This module contains Assembla Pull mechanism
+core = 7.x
+package = "MyFunctions"
+
+version = "7.x-X.X"

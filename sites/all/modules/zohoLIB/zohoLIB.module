@@ -1,0 +1,2192 @@
+<?php
+
+//Credentials section
+
+//For more information about managing API Tokens visit link:
+//https://www.assembla.com/spaces/sd_marketing/wiki/Managing_ZOHO_API_authtokens
+
+$authtoken = variable_get('zoho_auth', NULL);
+
+$authtoken_leads = variable_get('zoho_auth_leads', NULL);
+
+$_SESSION["authtoken"] = $authtoken;
+$_SESSION["authtoken_leads"] = $authtoken_leads;
+
+const ITP = "itp";
+const INTERNSHIP = "internship";
+const NON_LISTED = "non_listed";
+const NON_TECHNICAL = "offer-non-technical";
+const TECHNICAL = "offer-technical";
+
+function zohoLIB_block_info()
+{
+
+    $blocks = array();
+    $blocks['offers_form'] = array(
+        'info' => t('Offers-Form-Block'),
+        'cache' => DRUPAL_CACHE_GLOBAL,
+    );
+
+    $blocks['apply_form'] = array(
+        'info' => t('Apply-Form-Block'),
+        'cache' => DRUPAL_CACHE_GLOBAL,
+    );
+
+    return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ *
+ * This function tells drupal how to define our block when viewed.
+ *
+ * For more information on this function, see:
+ * http://api.drupal.org/api/drupal/modules block block.api.php/function/hook_block_view/7
+ */
+function zohoLIB_block_view($delta = '')
+{
+    $block = array();
+    switch ($delta) {
+        case 'offers_form':
+            $block['subject'] = t('<strong>Aktualne oferty pracy</strong>  - Dołącz do naszego zespołu!');
+            $block['content'] = array(
+                '#markup' => offersContent(),
+                '#prefix' => '<div id="offers" style="padding-bottom: 50px;">',
+                '#suffix' => '<br/><br/><br/><hr class="tall span12"/></div>',);
+
+            break;
+
+        case 'apply_form':
+            $ids = $_GET['job'];
+            $jb = $_GET['id'];
+
+            $ids = str_replace("-", " ", $ids);
+
+            $block['subject'] = t('Aplikujesz na <strong>' . $ids . '</strong><hr>');
+
+            $block['content'] = array(
+                '#markup' => applyFormOverride(),
+                '#prefix' => '<div id="apply" class="span12">',
+                '#suffix' => '</div>',);
+
+            break;
+    }
+
+    // Finally, we return the $block array.
+    return $block;
+}
+
+//proper urls handling
+function applyFormOverride()
+{
+    $ids = $_GET['id'];
+    if (!(empty($ids))) {
+        //check if it's published in ZOHO.
+        $singleJob = getRecordByID($ids);
+        if (isset($singleJob->nodata) || $singleJob == false) {
+            //dropped ZOHO support, manual mode
+            //drupal_goto('careers');
+        } else {
+            $published = false;
+            foreach ($singleJob->result->JobOpenings->row[0] as $row) {
+
+                if (!(strcmp($row['val'], "Published in website") && strcmp($row, "true"))) {
+                    $published = true;
+                    break;
+                }
+            }
+            if (!$published) {
+                drupal_goto('careers');
+            };
+        }
+    }
+}
+
+//filling offers block content.
+function offersContent()
+{
+    global $activeJobs;
+
+
+    list($jobOpenings, $success) = getJobOpenings();
+
+    if ($success) {
+
+        foreach ($jobOpenings->result->JobOpenings->row as $row) {
+            $ShortDes = null;
+            $Name = null;
+            $City = null;
+            $Des = null;
+            $JobID = null;
+            $Published = null;
+            $filled = false;
+            $rowContent = null;
+            $KeyID = null;
+            $Duties = NULL;
+            $Requirements = NULL;
+            $JobLang = NULL;
+            $ranking = null;
+            $jobType = null;
+            $ShowNetSalary = NULL;
+
+            $env = variable_get('ENV', NULL);
+            foreach ($row->children() as $key) {
+                $title = $key['val'];
+                $cont = $key;
+
+                if (!strcmp($title, "Position short description")) {
+                    $ShortDes = $cont;
+                }
+
+                if ($env == "PROD") {
+                    if (!strcmp($title, "Position title visible")) {
+                        $Name = $cont;
+                    }
+                } else {
+
+                    if (!strcmp($title, "Position Title visible")) {
+                        $Name = $cont;
+                    }
+                }
+
+                if (!strcmp($title, "Position city")) {
+                    $City = $cont;
+                }
+
+                if (!strcmp($title, "Position description")) {
+                    $Des = $cont;
+                }
+                if (!strcmp($title, "Job opening language")) {
+                    $JobLang = $cont;
+                }
+                if (!strcmp($title, "Duties")) {
+                    $Duties = $cont;
+                }
+
+                if (!strcmp($title, "Requirements")) {
+                    $Requirements = $cont;
+                }
+
+                if (!strcmp($title, "Ranking")) {
+                    $ranking = $cont;
+                }
+
+                if (!strcmp($title, "JOBOPENINGID")) {
+                    $JobID = $cont;
+                }
+
+                if(!strcmp($title, 'show expected salary net')) {
+                    $ShowNetSalary = $cont;
+
+                }
+
+                if (!strcmp($title, "Publish")) {
+                    $Published = $cont;
+                    $filled = true;
+                }
+                if (!strcmp($title, "Job Opening Type")) {
+                    $jobType = $cont;
+                }
+
+            }
+
+            if ($filled && (!strcmp($Published, "true"))) {
+                //$KeyID = generateRandomString(5);
+                //if JobOffer is published, add to active array...
+                $activeJobs[] = array(
+                    "JobID" => $JobID,
+                    "Name" => $Name,
+                    "City" => $City,
+                    "ShortDes" => $ShortDes,
+                    "Des" => $Des,
+                    "Dut" => $Duties,
+                    "Req" => $Requirements,
+                    "JobL" => $JobLang,
+                    "Ranking" => $ranking,
+                    "jobType" => $jobType,
+                    'ShowNetSalary' => $ShowNetSalary
+                );
+                $_SESSION[parseURL($Name)] = (string)$JobID;
+                $_SESSION["a" . (string)$JobID] = (string)$Name;
+
+                //...and to toggle:
+                //$rowContent = '<section class="toggle span8"><a class="btn btn-primary pull-bottom" href=/careers/'.parseURL($Name).'>Aplikuj teraz!</a></section>';
+                //$rowContent = '<section class="toggle span8" onclick="hrefme('."'".(string)parseURL($Name)."'".');"><label><strong>'.$Name." </strong>: ".$ShortDes.'</label><div class="toggle-content" style="white-space: pre"><p>Poznaj więcej szczegółów<br/><br/><a class="btn btn-primary pull-bottom" href=/careers/'.parseURL($Name).'>Aplikuj teraz!</a></p>'.'</div></section>';
+
+            };
+        }
+        foreach ($activeJobs as $key => $row) {
+            // replace 0 with the field's index/key
+            $ranking[$key] = (int)$row['Ranking'];
+        }
+        array_multisort($ranking, SORT_ASC, $activeJobs);
+        $output = '<div class="span12">';
+        $output .= '<h2>Oferty dla programistów:</h2>';
+        foreach ($activeJobs as $row) {
+            if((string)$row['jobType'] === TECHNICAL) {
+                $rowContent = '<section class="toggle span8" onclick="hrefme(' . "'" . (string)parseURL($row["Name"]) . "'" . ');"><label><strong>' . $row["Name"] . " </strong>: " . $row["ShortDes"] . '</label><div class="toggle-content"></div></section>';
+                //$rowContent = '<div class="alert alert-info"><a class="btn btn-primary pull-bottom" style="margin-bottom:-14px!important;margin-top:-15px!important;margin-right:10px;" href=/careers/'.parseURL($Name).'>>></a><a href="/careers/'.parseURL($Name).'"><p style="margin-top:5px;display:inline;">'.$Name.'</p>'.'</a></div>';
+                //$rowContent = '<section class="toggle span8"><label><strong>'.$Name." </strong>: ".$ShortDes.'</label><div class="toggle-content" style="white-space: pre">'.$Des.'<p><br/><br/><a class="btn btn-primary pull-bottom" href="/apply-form?id='.$JobID.'&job='.parseURL($Name).'">Aplikuj teraz!</a></p>'.'</div></section>';
+                $output .= $rowContent;
+            }
+        }
+        $output .='</div>';
+        $output .='</br>';
+        $output .= '<div class="span12" style="margin-top: 20px;" >';
+        $output .= '<h2>Pozostałe oferty:</h2>';
+        foreach ($activeJobs as $row) {
+            if((string)$row['jobType'] === NON_TECHNICAL) {
+                $rowContent = '<section class="toggle span8" onclick="hrefme(' . "'" . (string)parseURL($row["Name"]) . "'" . ');"><label><strong>' . $row["Name"] . " </strong>: " . $row["ShortDes"] . '</label><div class="toggle-content"></div></section>';
+                //$rowContent = '<div class="alert alert-info"><a class="btn btn-primary pull-bottom" style="margin-bottom:-14px!important;margin-top:-15px!important;margin-right:10px;" href=/careers/'.parseURL($Name).'>>></a><a href="/careers/'.parseURL($Name).'"><p style="margin-top:5px;display:inline;">'.$Name.'</p>'.'</a></div>';
+                //$rowContent = '<section class="toggle span8"><label><strong>'.$Name." </strong>: ".$ShortDes.'</label><div class="toggle-content" style="white-space: pre">'.$Des.'<p><br/><br/><a class="btn btn-primary pull-bottom" href="/apply-form?id='.$JobID.'&job='.parseURL($Name).'">Aplikuj teraz!</a></p>'.'</div></section>';
+                $output .= $rowContent;
+            }
+        }
+        $output .= "</div>";
+        addNewNodeOffers($activeJobs);
+
+
+    } //brak połączenia z ZOHO, pobieramy stary content
+    else {
+        //drupal_set_message(t("Brak połaczenia z ZOHO! - careers"), 'warning');
+
+        $authtoken = variable_get('zoho_auth', NULL);
+        watchdog('ZOHO', 'Brak połaczenia z ZOHO! - careers. Result: %result ', array('%result' => $jobOpenings), WATCHDOG_WARNING, $link = NULL);
+        $output = '<div class="span12">';
+        $vID = "Job-offers";
+
+        //pobierz wszystkie Job-offers;
+
+        $nids = db_select('node', 'n')
+            ->fields('n', array('nid'))
+            ->fields('n', array('title'))
+            ->condition('n.title', $vID)
+            ->execute()
+            ->fetchCol();
+        $nodes = node_load_multiple($nids);
+
+        foreach ($nodes as $node) {
+
+            $title = getTextBetweenTags($node->body['und'][0]['value'], "h1");
+            $des = getTextBetweenTags($node->body['und'][0]['value'], "h2");
+
+            $rowContent = '<section class="toggle span8" onclick="redir(' . "'" . drupal_get_path_alias("node/$node->nid") . "'" . ');"><label><strong>' . $title[0] . " </strong>: " . $des[0] . '</label><div class="toggle-content"></div></section>';
+            $output .= $rowContent;
+
+        }
+
+        $output .= "</div>";
+    }
+    return $output;
+}
+
+
+function getTextBetweenTags($string, $tagName)
+{
+    // Create DOM from string
+    $html = str_get_html($string);
+
+    $titles = array();
+    // Find all tags
+    foreach ($html->find($tagName) as $element) {
+        $titles[] = $element->plaintext;
+    }
+
+    return $titles;
+}
+
+
+function addNewNodeOffers($activeJobs)
+{
+
+    //dostaje arraya z activeJobs, musze usunac wszystkie poprzednie i stworzyc nowe
+
+    $vID = "Job-offers";
+
+    //usuwanie section
+    $nids = db_select('node', 'n')
+        ->fields('n', array('nid'))
+        ->fields('n', array('title'))
+        ->condition('n.title', $vID)
+        ->execute()
+        ->fetchCol(); // returns an indexed array
+    $nodes = node_load_multiple($nids);
+
+
+    if (!empty($nodes)) {
+        node_delete_multiple($nids);
+    }
+
+
+    foreach ($activeJobs as $job) {
+
+        $JobID = null;
+        $Name = null;
+        $City = null;
+        $ShortDes = null;
+        $Des = null;
+        $Dut = null;
+        $Req = null;
+        $JobL = null;
+        $ShowNetSalary = null;
+        //tutaj zbierz dane z duty i req
+
+        //pull from array
+        foreach ($job as $key => $value) {
+            if (!strcmp($key, "JobID")) {
+                $JobID = $value;
+            } else if (!strcmp($key, "Name")) {
+                $Name = $value;
+            } else if (!strcmp($key, "City")) {
+                $City = $value;
+            } else if (!strcmp($key, "ShortDes")) {
+                $ShortDes = $value;
+            } else if (!strcmp($key, "Des")) {
+                $Des = $value;
+            } else if (!strcmp($key, "Dut")) {
+                $Dut = $value;
+            } else if (!strcmp($key, "Req")) {
+                $Req = $value;
+            } else if (!strcmp($key, "JobL")) {
+                $JobL = $value;
+            }
+            else if (!strcmp($key, "ShowNetSalary")) {
+                $ShowNetSalary = (string)$value == 'yes';
+            }
+        }
+
+        $node = new stdClass();
+        $node->type = 'page';
+        node_object_prepare($node);
+        $node->title = $vID;
+        $node->language = 'en';
+        $node->field_show_net_salary[LANGUAGE_NONE][0]['value'] = (int)$ShowNetSalary;
+
+        if ($Dut != null) {
+            $duties_array = explode(PHP_EOL, $Dut);
+            $duties_formatted = '<div class="list-duties">';
+            foreach ($duties_array as $element) {
+                $duties_formatted = $duties_formatted . '<li class="lead nograph"><i class="icon  icon-ok icon-blue"></i> ' . $element . '</li>';
+            }
+            $duties_formatted .= '</div>';
+        }
+
+        if ($Req != null) {
+            $req_array = explode(PHP_EOL, $Req);
+            $req_formatted = '<div class="list-requirements">';
+            foreach ($req_array as $element) {
+                $req_formatted = $req_formatted . '<li class="lead nograph"><i class="icon icon-ok icon-blue"></i> ' . $element . '</li>';
+            }
+            $req_formatted .= '</div>';
+        }
+
+        $benefits_block = createBenefitsList($JobL);
+
+
+        $node->body[LANGUAGE_NONE][0]['format'] = 'full_html';
+        $node->uid = 1;
+        $node->promote = 0;
+        $node->comment = 0;
+        $alias = "careers/" . parseURL($Name);
+        $node->path = array('alias' => $alias, 'pathauto' => 0);
+        // save first time just for the node id to use in the node body
+        node_save($node);
+
+        if (!strcmp($JobL, "ENG")) {
+            $content = '<div class="careers-overlay-header"><h1><strong>' . $Name . '</strong></h1>';
+            $content .= '<h2>' . $ShortDes . '</h2></div><br/><br/>';
+            $content .= '<div class="lead lead-div">' . $Des . '</div>';
+            $content .= '<div class="lead-button"><a class="btn btn-primary pull-bottom career-apply" href="/apply-form?id=' . $JobID . '&job=' . parseURL($Name) . '&nid='. $node->nid .'">Apply now!</a></div>';
+            $content .= '<br/><hr class="tall hr-clear"><h2>Requirements</h2>' . $req_formatted;
+            $content .= '<br/><hr class="tall"><h2>Our benefits</h2>' . $benefits_block;
+            $content .= '<br/><br/><a class="btn btn-primary pull-bottom career-apply" href="/apply-form?id=' . $JobID . '&job=' . parseURL($Name) . '&nid='. $node->nid . '">Apply now!</a>';
+
+        } else {
+            $content = '<div class="careers-overlay-header"><h1><strong>' . $Name . '</strong></h1>';
+            $content .= '<h2>' . $ShortDes . '</h2></div><br/><br/>';
+            $content .= '<div class="lead lead-div">' . $Des . '</div>';
+            $content .= '<div class="lead-button"><a class="btn btn-primary pull-bottom career-apply" href="/apply-form?id=' . $JobID . '&job=' . parseURL($Name) . '&nid='. $node->nid . '">Aplikuj teraz!</a></div>';
+            $content .= '<br/><hr class="tall hr-clear"><h2>Oczekujemy</h2>' . $req_formatted;
+            $content .= '<br/><hr class="tall"><h2>Benefity</h2>' . $benefits_block;
+            $content .= '<br/><br/><a class="btn btn-primary pull-bottom career-apply" href="/apply-form?id=' . $JobID . '&job=' . parseURL($Name) . '&nid='. $node->nid . '">Aplikuj teraz!</a>';
+        }
+        $node->body[LANGUAGE_NONE][0]['value'] = $content;
+
+        // save again with body containing its node id
+        node_save($node);
+    }
+}
+
+//get JobOpenings from ZOHO recruit
+function getJobOpenings()
+{
+    $authtoken = variable_get('zoho_auth', NULL);
+
+    $api_url = 'https://recruit.zoho.com/recruit/private/xml/JobOpenings/getRecords?authtoken=' . $authtoken . '&scope=recruitapi&fromIndex=1&toIndex=200';
+
+
+    $success = true;
+    $error_dump = null;
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $api_url);
+    curl_setopt($ch, CURLOPT_HEADER, FALSE);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    $result = curl_exec($ch);
+    curl_close($ch);
+
+    libxml_use_internal_errors(true);
+
+    $xml = simplexml_load_string($result);
+
+    if (!$xml) {
+        $errors = libxml_get_errors();
+
+        foreach ($errors as $error) {
+            $error_dump .= $error->message . "\n";
+        }
+
+        libxml_clear_errors();
+        $xml = "Error: XML expected, returned: " . $result . "\nlibxml errors:\n" . $error_dump;
+        $success = false;
+    }
+
+    return array($xml, $success);
+}
+
+function getRecordByID($id)
+{
+    $authtoken = variable_get('zoho_auth', NULL);
+    $api_url = 'https://recruit.zoho.com/recruit/private/xml/JobOpenings/getRecordById?authtoken=' . $authtoken . '&scope=recruitapi&id=' . $id;
+
+    $xml = executeCurl($api_url);
+    return $xml;
+
+}
+
+function getCandidateRecordByID($id)
+{
+    $authtoken = variable_get('zoho_auth', NULL);
+    $api_url = 'https://recruit.zoho.com/recruit/private/xml/Candidates/getRecordById?authtoken=' . $authtoken . '&scope=recruitapi&id=' . $id;
+
+    $xml = executeCurl($api_url);
+    return $xml;
+
+}
+
+/**
+ * @param $api_url
+ * @return SimpleXMLElement
+ */
+function executeCurl($api_url)
+{
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $api_url);
+    curl_setopt($ch, CURLOPT_HEADER, FALSE);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    $result = curl_exec($ch);
+
+    $xml = simplexml_load_string($result);
+    curl_close($ch);
+    return $xml;
+}
+
+function parseURL($name)
+{
+    $result = preg_replace('/\s+/', '-', $name);
+    return $result;
+}
+
+
+function generateRandomString($length = 4)
+{
+    $characters = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    $randomString = '';
+    for ($i = 0; $i < $length; $i++) {
+        $randomString .= $characters[rand(0, strlen($characters) - 1)];
+    }
+    return $randomString;
+}
+
+function getJobRow($value)
+{
+    $iterator = 0;
+    foreach ($GLOBALS["activeJobs"] as $row) {
+        if (!strcmp($row['KeyID'], $value)) {
+            return $iterator;
+        } else {
+            $iterator++;
+        }
+    }
+    return -1;
+}
+
+
+//Get data from application form and send it to zoho CRM
+function zohoLIB_webform_submission_presave($node, &$submission)
+{
+    $env = variable_get('ENV', NULL);
+    watchdog('ZOHO', 'Zoho add Candidate node id. Result: %result ', array('%result' => $node->nid), WATCHDOG_INFO, $link = NULL);
+
+    if (strpos($node->title, 'Additional') !== false) {
+        $subZohoLog = fopen('sub-zoho-log.txt', "a+");
+        //przechwyć formularze z additional interview
+        $subJ = null;
+        $logJ = null;
+
+        date_default_timezone_set("Europe/Warsaw");
+        $data = 'Submitted: ' . date('l jS \of F Y h:i:s A', $submission->submitted) . "\n";
+        $subJ = $data;
+
+        $from = 'From IP: ' . $submission->remote_addr . "\n";
+        $subJ .= $from;
+
+        $logJ = $subJ . "Content:\n";
+        $email = null;
+        $it = 1;
+
+        foreach ($submission->data as &$s) {
+
+            $temp = null;
+
+            if ($node->webform['components'][$it]['name'] == "Email address") {
+                $email = htmlspecialchars($s['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+            } else if ($node->webform['components'][$it]['type'] == "grid") {
+                $str = var_export($s['value'], true);
+                $str = htmlspecialchars($str, ENT_COMPAT, 'ISO-8859-1', true);
+                //cut off nasty formating
+                $temp = explode("(", $str);
+                $temp = explode(")", $temp[1]);
+                $temp = $node->webform['components'][$it]['name'] . "\n" . $temp[0] . "\n";
+            } else {
+                $temp = $node->webform['components'][$it]['name'] . "\n" . htmlspecialchars($s['value'][0], ENT_COMPAT, 'ISO-8859-1', true) . "\n";
+            }
+            $subJ .= $temp;
+            $logJ .= $temp;
+            $it++;
+        }
+        $logJ .= "Email: \t" . $email . "\n";
+
+        $authtoken = variable_get('zoho_auth', NULL);
+
+        $xml2 = "<Candidates><row no=\"1\">";
+        $xml2 .= "<FL val=\"Email ID\">" . $email . "</FL>";
+        $xml2 .= "<FL val=\"Content\">" . $subJ . "</FL>";
+        $xml2 .= "</row></Candidates>";
+
+        $ch = curl_init('https://recruit.zoho.com/recruit/private/xml/Candidates/addRecords?');
+
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 0);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 1000);
+        curl_setopt($ch, CURLOPT_POST, TRUE);
+
+        $xml3 = urlencode($xml2);
+
+        $query = "authtoken={$authtoken}&scope=recruitapi&duplicateCheck=2&xmlData={$xml3}";
+
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $query);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+            "Expect:"
+        ));
+
+        $result = curl_exec($ch);
+
+        curl_close($ch);
+
+        $response = new SimpleXMLElement($result);
+        $logJ .= "Zoho Response:" . $response->asXML() . "\n\n";
+
+
+        fwrite($subZohoLog, $logJ);
+        fclose($subZohoLog);
+
+        if (isset($response->error)) {
+            drupal_goto('error-page');
+
+        } else {
+            $randomID = generateRandomString();
+            drupal_goto('thanks', array('query' => array('id' => $randomID)));
+        }
+    }
+
+
+    if (isCareerForm($node)) {
+        $jobId = $_GET['id'];
+
+        if ($submission->is_draft) {
+            $xmlData = buildXMLDataFromApplySubmission($submission);
+            $result = addRecords($xmlData, $submission, $jobId);
+            $candidateId = (string)$result->result->recorddetail->FL;
+            if (!$result) {
+                return;
+            } else {
+                sleep(2);
+                $associate = associateJobOpening($xmlData, $candidateId, $submission, $jobId);
+
+            }
+            $_SESSION['candidateId'] = $candidateId;
+
+            $cvFile = $submission->data[6]['value'][0] !== null ? file_load($submission->data[6]['value'][0]) : null;
+            $lmFile = $submission->data[8]['value'][0] !== null ? file_load($submission->data[8]['value'][0]) : null;;
+            attachResumeFilesToCandidate($candidateId, $cvFile, $lmFile);
+
+        } else {
+
+            $xmlData = buildXMLDataFromApplySubmission($submission);
+
+            if (isset($_SESSION['candidateId'])) {
+                $result = updateRecord($_SESSION['candidateId'], $xmlData);
+            }
+        }
+
+    }
+    if (isITPForm($node, $env)) {
+
+        $jobId = getJobId($env, ITP);
+
+        $cvFile = getITPCvFile($submission, $env);
+        $xmlData = buildXMLDataFromITPSubmission($submission, $env);
+        $result = addRecords($xmlData, $submission, $jobId);
+        $candidateId = (string)$result->result->recorddetail->FL;
+
+        if (!$result) {
+            return;
+        } else {
+            sleep(2);
+            $associate = associateJobOpening($xmlData, $candidateId, $submission, $jobId);
+            attachResumeFilesToCandidate($candidateId, $cvFile, null);
+        }
+
+
+    }
+
+    if (isInternshipForm($node, $env)) {
+        $jobId = getJobId($env, INTERNSHIP);
+
+        $xmlData = buildXMLDataFromInternshipSubmission($submission, $env);
+        $result = addRecords($xmlData, $submission, $jobId);
+
+        $candidateId = (string)$result->result->recorddetail->FL;
+
+        if (!$result) {
+            return;
+        } else {
+            sleep(2);
+            $associate = associateJobOpening($xmlData, $candidateId, $submission, $jobId);
+            list($cvFile, $lmFile) = getInternshipFiles($submission);
+
+            attachResumeFilesToCandidate($candidateId, $cvFile, $lmFile);
+        }
+
+    }
+    if (isNonListedJobForm($node, $env)) {
+        $jobId = getJobId($env, NON_LISTED);
+
+        if ($submission->is_draft) {
+            $xmlData = buildXMLDataFromNonListedJobSubmission($submission, $env);
+            $result = addRecords($xmlData, $submission, $jobId);
+            watchdog('ZOHO', 'Zoho add Candidate result response. Result: %result ', array('%result' => $result), WATCHDOG_INFO, $link = NULL);
+            $candidateId = (string)$result->result->recorddetail->FL;
+            if (!$result) {
+                return;
+            } else {
+                sleep(2);
+                $associate = associateJobOpening($xmlData, $candidateId, $submission, $jobId);
+            }
+            $_SESSION['candidateId'] = $candidateId;
+
+            $cvFile = $submission->data[6]['value'][0] !== null ? file_load($submission->data[6]['value'][0]) : null;
+            attachResumeFilesToCandidate($candidateId, $cvFile, null);
+
+        } else {
+
+            $xmlData = buildXMLDataFromNonListedJobSubmission($submission, $env);
+
+            if (isset($_SESSION['candidateId'])) {
+                $result = updateRecord($_SESSION['candidateId'], $xmlData);
+            }
+        }
+    }
+
+    //wyjscie na keymaker
+    if (!(strcmp($node->nid, 116))) {
+        $files_to_update = array_diff(scandir("sites/default/files/careers"), array('..', '.'));
+        $file_array = null;
+        $counter = 1;
+        //For each file in careers folder - to send to ZOHO
+        foreach ($files_to_update as $file) {
+            $file_array .= "[" . $counter . "]" . $file . PHP_EOL;
+            $counter++;
+
+        }
+        watchdog('ZOHO', 'Keymaker. Result: %result ', array('%result' => $file_array), WATCHDOG_INFO, $link = NULL);
+
+    }
+}
+
+/**
+ * @param $submission
+ * @return array
+ */
+function getInternshipFiles(&$submission)
+{
+    $env = variable_get('ENV', NULL);
+    if ($env === "PROD"){
+
+        $cvFile = $submission->data[13]['value'][0] !== null ? file_load($submission->data[13]['value'][0]) : null;
+        $lmFile = $submission->data[14]['value'][0] !== null ? file_load($submission->data[14]['value'][0]) : null;
+    } else {
+        $cvFile = $submission->data[12]['value'][0] !== null ? file_load($submission->data[12]['value'][0]) : null;
+        $lmFile = $submission->data[13]['value'][0] !== null ? file_load($submission->data[13]['value'][0]) : null;
+    }
+    return array($cvFile, $lmFile);
+}
+
+/**
+ * @param $submission
+ * @param $env
+ * @return array
+ */
+function buildXMLDataFromInternshipSubmission($submission, $env)
+{
+    $dataFields = getInternshipFormSubmissionFields($submission, $env);
+
+    $xmlData = buildInternshipFormXMLData($env, $dataFields);
+    return $xmlData;
+}
+
+/**
+ * @param $submission
+ * @param $env
+ * @return array
+ */
+function buildXMLDataFromNonListedJobSubmission($submission, $env)
+{
+    $dataFields = getNonListedJobFormSubmissionFields($submission, $env, $submission->is_draft);
+
+    $xmlData = buildNonListedJobFormXMLData($env, $dataFields);
+    return $xmlData;
+}
+
+/**
+ * @param $env
+ * @param $submission
+ * @return array
+ */
+function buildXMLDataFromITPSubmission($submission, $env)
+{
+    $dataFields = getITPSubmissionFields($submission, $env);
+    $dataFields['city'] = "Trójmiasto";
+    $xmlData = buildITPFormXMLData($env, $dataFields);
+    return $xmlData;
+}
+
+/**
+ * @param $submission
+ * @return array
+ */
+function buildXMLDataFromApplySubmission(&$submission)
+{
+    $dataFields = getApplyFormSubmissionFields($submission, $submission->is_draft);
+    $xmlData = buildApplyFormXMLData($dataFields, $submission->is_draft);
+    return $xmlData;
+}
+
+
+
+/**
+ * @param $cvFile
+ * @param $lmFile
+ * @param $candidateId
+ * @return mixed
+ */
+function attachResumeFilesToCandidate($candidateId, $cvFile, $lmFile)
+{
+
+    if ($lmFile) {
+        $lmUploadResult = uploadFile($candidateId, 'Attach motivation letter', drupal_realpath($lmFile->uri));
+        file_delete($lmFile, TRUE);
+    } else {
+        $lmUploadResult = null;
+    }
+    if ($cvFile) {
+        $cvUploadResult = uploadFile($candidateId, 'Attach resume', drupal_realpath($cvFile->uri));
+        file_delete($cvFile, TRUE);
+    } else {
+        $cvUploadResult = null;
+    }
+
+
+    return array($lmUploadResult, $cvUploadResult);
+}
+
+/**
+ * @param $dataFields
+ * @param bool $isDraft
+ * @return array
+ */
+function buildApplyFormXMLData($dataFields, $isDraft)
+{
+    $env = variable_get('ENV', NULL);
+
+    $xmlData = "<Candidates><row no=\"1\">";
+    $xmlData .= "<FL val=\"First Name\">" . $dataFields['firstName'] . "</FL>";
+    $xmlData .= "<FL val=\"Last Name\">" . $dataFields['lastName'] . "</FL>";
+    if ($env == "DEV") {
+        $xmlData .= "<FL val=\"Telephone\">" . $dataFields['phone'] . "</FL>";
+    } else {
+        $xmlData .= "<FL val=\"Phone\">" . $dataFields['phone'] . "</FL>";
+    }
+
+    $xmlData .= "<FL val=\"City\">" . $dataFields['city'] . "</FL>";
+    if ($env == "DEV") {
+        $xmlData .= "<FL val=\"Email ID\">" . $dataFields['email'] . "</FL>";
+    }
+    $xmlData .= "<FL val=\"Email\">" . $dataFields['email'] . "</FL>";
+    $xmlData .= "<FL val=\"Resume status\">New</FL>";
+
+    if (!$isDraft) {
+        $xmlData .= "<FL val=\"Availability\">" . $dataFields['availability'] . "</FL>";
+        $xmlData .= "<FL val=\"Workload\">" . $dataFields['workload'] . "</FL>";
+        $xmlData .= "<FL val=\"Preferred employment form\">" . $dataFields['employmentForm'] . "</FL>";
+        $xmlData .= "<FL val=\"Expected salary (gross)\">" . $dataFields['salaryGross'] . "</FL>";
+        $xmlData .= "<FL val=\"Expected salary (net)\">" . $dataFields['salaryNet'] . "</FL>";
+    }
+
+    $xmlData .= "</row></Candidates>";
+
+    return urlencode($xmlData);
+}
+
+/**
+ * @param $submission
+ * @param bool $isDraft
+ * @return mixed
+ */
+function getApplyFormSubmissionFields(&$submission, $isDraft)
+{
+    $dataFields = array();
+    $dataFields['firstName'] = htmlspecialchars($submission->data[1]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+    $dataFields['lastName'] = htmlspecialchars($submission->data[2]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+    $dataFields['phone'] = htmlspecialchars($submission->data[3]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+    $dataFields['city'] = htmlspecialchars($submission->data[4]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+    $dataFields['email'] = htmlspecialchars($submission->data[5]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+
+    if (!$isDraft) {
+        $dataFields['availability'] = htmlspecialchars($submission->data[10]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $workload = htmlspecialchars($submission->data[11]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['workload'] = str_replace("_", " ", $workload);
+
+        $employmentForm = htmlspecialchars($submission->data[12]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['employmentForm'] = str_replace("_", " ", $employmentForm);
+
+        $dataFields['salaryGross'] = htmlspecialchars($submission->data[13]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['salaryNet'] = htmlspecialchars($submission->data[14]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+    }
+
+
+    return $dataFields;
+}
+
+/**
+ * @param $node
+ * @return bool
+ */
+function isCareerForm($node)
+{
+    return !(strcmp($node->nid, 61));
+}
+
+/**
+ * @param $node
+ * @param $env
+ * @return bool
+ */
+function isInternshipForm($node, $env)
+{
+    return (!(strcmp($node->nid, 2716681)) && $env == "PROD") || (!(strcmp($node->nid, 1867410)) && $env == "DEV");
+}
+
+function isNonListedJobForm($node, $env)
+{
+    return (!(strcmp($node->nid, 2717255)) && $env == "PROD") || (!(strcmp($node->nid, 1867519)) && $env == "DEV");
+
+}
+
+/**
+ * @param $node
+ * @param $env
+ * @return bool
+ */
+function isITPForm($node, $env)
+{
+    return (!(strcmp($node->nid, 2383915)) && $env == "PROD") || (!(strcmp($node->nid, 1867267)) && $env == "DEV");
+}
+
+
+/**
+ * @param $env
+ * @return mixed
+ */
+function getJobId($env, $type)
+{
+    if (in_array($type, array(ITP, INTERNSHIP, NON_LISTED)))
+        if ($env == "PROD") {
+            $jobId = variable_get("prod_${type}_job_id", NULL);
+            return $jobId;
+        } else {
+            $jobId = variable_get("dev_${type}_job_id", NULL);
+            return $jobId;
+        }
+}
+
+
+/**
+ * @param $submission
+ * @param $env
+ * @return mixed
+ */
+function getITPCvFile(&$submission, $env)
+{
+    if ($env == "PROD") {
+        $cvFile = file_load($submission->data[14]['value'][0]);
+        return $cvFile;
+    } else {
+        $cvFile = file_load($submission->data[13]['value'][0]);
+        return $cvFile;
+    }
+}
+
+/**
+ * @param $submission
+ * @param $env
+ * @return mixed
+ */
+function getITPSubmissionFields(&$submission, $env)
+{
+    $dataFields = array();
+    if ($env == "PROD") {
+        $dataFields['firstName'] = htmlspecialchars($submission->data[1]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['lastName'] = htmlspecialchars($submission->data[2]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['phone'] = htmlspecialchars($submission->data[3]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['email'] = htmlspecialchars($submission->data[4]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['school'] = htmlspecialchars($submission->data[5]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['fieldOfStudy'] = htmlspecialchars($submission->data[6]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['yearOfStudy'] = htmlspecialchars($submission->data[7]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['english'] = htmlspecialchars($submission->data[8]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['additionalLanguages'] = htmlspecialchars($submission->data[9]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['lookingFor'] = htmlspecialchars($submission->data[10]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['workLoad'] = htmlspecialchars($submission->data[11]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['experience'] = htmlspecialchars($submission->data[12]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['additionalNotes'] = htmlspecialchars($submission->data[15]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['programmingLanguages'] = htmlspecialchars(implode(';', $submission->data[13]['value']), ENT_COMPAT, 'ISO-8859-1', true);
+    } else {
+        $dataFields['firstName'] = htmlspecialchars($submission->data[1]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['lastName'] = htmlspecialchars($submission->data[2]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['phone'] = htmlspecialchars($submission->data[3]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['email'] = htmlspecialchars($submission->data[16]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['school'] = htmlspecialchars($submission->data[4]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['fieldOfStudy'] = htmlspecialchars($submission->data[5]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['yearOfStudy'] = htmlspecialchars($submission->data[10]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['english'] = htmlspecialchars($submission->data[7]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['additionalLanguages'] = htmlspecialchars($submission->data[8]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['lookingFor'] = htmlspecialchars($submission->data[9]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['workLoad'] = htmlspecialchars($submission->data[11]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['experience'] = htmlspecialchars($submission->data[12]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['additionalNotes'] = htmlspecialchars($submission->data[14]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['programmingLanguages'] = htmlspecialchars(implode(';', $submission->data[15]['value']), ENT_COMPAT, 'ISO-8859-1', true);
+    }
+    return $dataFields;
+
+}
+
+/**
+ * @param $submission
+ * @param $env
+ * @return mixed
+ */
+function getInternshipFormSubmissionFields(&$submission, $env)
+{
+    $dataFields = array();
+    if ($env == "PROD") {
+        $dataFields['firstName'] = htmlspecialchars($submission->data[1]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['lastName'] = htmlspecialchars($submission->data[2]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['email'] = htmlspecialchars($submission->data[3]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['birthDate'] = htmlspecialchars($submission->data[4]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['phone'] = htmlspecialchars($submission->data[5]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['school'] = htmlspecialchars($submission->data[6]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['fieldOfStudy'] = htmlspecialchars($submission->data[7]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['yearOfStudy'] = htmlspecialchars($submission->data[8]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['english'] = htmlspecialchars($submission->data[9]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['workLoad'] = htmlspecialchars($submission->data[10]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['internshipStartDate'] = htmlspecialchars($submission->data[11]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['additionalNotes'] = htmlspecialchars($submission->data[15]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['typeOfInternship'] = htmlspecialchars(implode(';', $submission->data[12]['value']), ENT_COMPAT, 'ISO-8859-1', true);
+
+    } else {
+        $dataFields['firstName'] = htmlspecialchars($submission->data[1]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['lastName'] = htmlspecialchars($submission->data[2]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['email'] = htmlspecialchars($submission->data[3]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['birthDate'] = htmlspecialchars($submission->data[4]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['phone'] = htmlspecialchars($submission->data[7]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['school'] = htmlspecialchars($submission->data[6]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['fieldOfStudy'] = htmlspecialchars($submission->data[8]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['yearOfStudy'] = htmlspecialchars($submission->data[9]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['english'] = htmlspecialchars($submission->data[10]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['workLoad'] = htmlspecialchars($submission->data[11]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['internshipStartDate'] = htmlspecialchars($submission->data[14]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['additionalNotes'] = htmlspecialchars($submission->data[15]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['typeOfInternship'] = htmlspecialchars(implode(';', $submission->data[5]['value']), ENT_COMPAT, 'ISO-8859-1', true);
+    }
+    return $dataFields;
+
+}
+
+/**
+ * @param $submission
+ * @param $env
+ * @return mixed
+ */
+function getNonListedJobFormSubmissionFields(&$submission, $env, $isDraft)
+{
+
+    $dataFields = array();
+    if ($env == "PROD") {
+        $dataFields['firstName'] = htmlspecialchars($submission->data[1]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['lastName'] = htmlspecialchars($submission->data[2]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['email'] = htmlspecialchars($submission->data[3]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['phone'] = htmlspecialchars($submission->data[4]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['position'] = htmlspecialchars($submission->data[5]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+
+    } else {
+        $dataFields['firstName'] = htmlspecialchars($submission->data[1]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['lastName'] = htmlspecialchars($submission->data[2]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['email'] = htmlspecialchars($submission->data[3]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['phone'] = htmlspecialchars($submission->data[4]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['position'] = htmlspecialchars($submission->data[5]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+    }
+
+    $dataFields['additionalNotes'] = htmlspecialchars($submission->data[13]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+
+    if (!$isDraft) {
+        $dataFields['availability'] = htmlspecialchars($submission->data[8]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $workload = htmlspecialchars($submission->data[9]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['workload'] = str_replace("_", " ", $workload);
+
+        $employmentForm = htmlspecialchars($submission->data[10]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['employmentForm'] = str_replace("_", " ", $employmentForm);
+
+        $dataFields['salaryGross'] = htmlspecialchars($submission->data[11]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+        $dataFields['salaryNet'] = htmlspecialchars($submission->data[12]['value'][0], ENT_COMPAT, 'ISO-8859-1', true);
+    }
+
+    return $dataFields;
+
+}
+
+function buildITPFormXMLData($env, array $dataFields)
+{
+    $xml = "<Candidates><row no=\"1\">";
+    $xml .= "<FL val=\"First Name\">" . $dataFields['firstName'] . "</FL>";
+    $xml .= "<FL val=\"Last Name\">" . $dataFields['lastName'] . "</FL>";
+    if ($env == "PROD") {
+        $xml .= "<FL val=\"Phone\">" . $dataFields['phone'] . "</FL>";
+    } else if ($env == "DEV") {
+        $xml .= "<FL val=\"Telephone\">" . $dataFields['phone'] . "</FL>";
+    }
+    $xml .= "<FL val=\"City\">" . $dataFields['city'] . "</FL>";
+    if ($env == "PROD") {
+        $xml .= "<FL val=\"Email\">" . $dataFields['email'] . "</FL>";
+    } else {
+        $xml .= "<FL val=\"Email ID\">" . $dataFields['email'] . "</FL>";
+    }
+    $xml .= "<FL val=\"Resume status\">New</FL>";
+    $xml .= "<FL val=\"University\">" . $dataFields['school'] . "</FL>";
+    $xml .= "<FL val=\"Field of study\">" . $dataFields['fieldOfStudy'] . "</FL>";
+    $xml .= "<FL val=\"Year of study\">" . $dataFields['yearOfStudy'] . "</FL>";
+    $xml .= "<FL val=\"English\">" . $dataFields['english'] . "</FL>";
+    $xml .= "<FL val=\"Additional notes regarding Languages\">" . $dataFields['additionalLanguages'] . "</FL>";
+    $xml .= "<FL val=\"Looking for\">" . $dataFields['lookingFor'] . "</FL>";
+    $xml .= "<FL val=\"Workload\">" . $dataFields['workLoad'] . "</FL>";
+    $xml .= "<FL val=\"Professional experience (description)\">" . $dataFields['experience'] . "</FL>";
+    if ($env == "PROD") {
+        $xml .= "<FL val=\"Additional notes:\">" . $dataFields['additionalNotes'] . "</FL>";
+    } else {
+        $xml .= "<FL val=\"Additional notes\">" . $dataFields['additionalNotes'] . "</FL>";
+    }
+    if ($env == "PROD") {
+        $xml .= "<FL val=\"Programming Languages\">" . $dataFields['programmingLanguages'] . "</FL>";
+    } else if ($env == "DEV") {
+        $xml .= "<FL val=\"Programming languages\">" . $dataFields['programmingLanguages'] . "</FL>";
+
+    }
+
+    $xml .= "</row></Candidates>";
+
+    return urlencode($xml);
+}
+
+function buildInternshipFormXMLData($env, array $dataFields)
+{
+    $xml = "<Candidates><row no=\"1\">";
+    $xml .= "<FL val=\"First Name\">" . $dataFields['firstName'] . "</FL>";
+    $xml .= "<FL val=\"Last Name\">" . $dataFields['lastName'] . "</FL>";
+    if ($env == "PROD") {
+        $xml .= "<FL val=\"Phone\">" . $dataFields['phone'] . "</FL>";
+    } else if ($env == "DEV") {
+        $xml .= "<FL val=\"Telephone\">" . $dataFields['phone'] . "</FL>";
+    }
+    $xml .= "<FL val=\"City\">" . $dataFields['city'] . "</FL>";
+    if ($env == "DEV") {
+        $xml .= "<FL val=\"Email ID\">" . $dataFields['email'] . "</FL>";
+    }
+    $xml .= "<FL val=\"Email\">" . $dataFields['email'] . "</FL>";
+    $xml .= "<FL val=\"Resume status\">New</FL>";
+    $xml .= "<FL val=\"University\">" . $dataFields['school'] . "</FL>";
+    $xml .= "<FL val=\"Field of study\">" . $dataFields['fieldOfStudy'] . "</FL>";
+    $xml .= "<FL val=\"Year of study\">" . $dataFields['yearOfStudy'] . "</FL>";
+    $xml .= "<FL val=\"English\">" . $dataFields['english'] . "</FL>";
+    $xml .= "<FL val=\"Additional notes regarding Languages\">" . $dataFields['additionalLanguages'] . "</FL>";
+    $xml .= "<FL val=\"Type of internship\">" . $dataFields['typeOfInternship'] . "</FL>";
+    $xml .= "<FL val=\"Start date of internship\">" . $dataFields['internshipStartDate'] . "</FL>";
+    $xml .= "<FL val=\"Birth date\">" . $dataFields['birthDate'] . "</FL>";
+    $xml .= "<FL val=\"Workload\">" . $dataFields['workLoad'] . "</FL>";
+    if ($env == "PROD") {
+        $xml .= "<FL val=\"Additional notes:\">" . $dataFields['additionalNotes'] . "</FL>";
+    } else {
+        $xml .= "<FL val=\"Additional notes\">" . $dataFields['additionalNotes'] . "</FL>";
+    }
+
+    $xml .= "</row></Candidates>";
+
+    return urlencode($xml);
+}
+
+function buildNonListedJobFormXMLData($env, array $dataFields)
+{
+    $xml = "<Candidates><row no=\"1\">";
+    $xml .= "<FL val=\"First Name\">" . $dataFields['firstName'] . "</FL>";
+    $xml .= "<FL val=\"Last Name\">" . $dataFields['lastName'] . "</FL>";
+    if ($env == "PROD") {
+        $xml .= "<FL val=\"Phone\">" . $dataFields['phone'] . "</FL>";
+    } else if ($env == "DEV") {
+        $xml .= "<FL val=\"Telephone\">" . $dataFields['phone'] . "</FL>";
+    }
+    if ($env == "DEV") {
+        $xml .= "<FL val=\"Email ID\">" . $dataFields['email'] . "</FL>";
+    }
+    $xml .= "<FL val=\"Email\">" . $dataFields['email'] . "</FL>";
+    $xml .= "<FL val=\"Resume status\">New</FL>";
+    $xml .= "<FL val=\"Position\">" . $dataFields['position'] . "</FL>";
+    if ($env == "PROD") {
+        $xml .= "<FL val=\"Additional notes:\">" . $dataFields['additionalNotes'] . "</FL>";
+    } else {
+        $xml .= "<FL val=\"Additional notes\">" . $dataFields['additionalNotes'] . "</FL>";
+    }
+
+    $xml .= "</row></Candidates>";
+
+    return urlencode($xml);
+}
+
+function sendFile($uri, array $postFields)
+{
+    $curlResource = curl_init();
+    $curlOptions = getOptionsCurlUpload($uri, $postFields);
+    $curlResource = setOptionsCurlUpload($curlResource, $curlOptions);
+    return curl_exec($curlResource);
+
+}
+
+function setOptionsCurlUpload($curlResource, array $options)
+{
+    foreach ($options as $key => $value) {
+        curl_setopt($curlResource, $key, $value);
+    }
+    return $curlResource;
+}
+
+
+function getOptionsCurlUpload($uri, array $postFields)
+{
+    return array(
+        CURLOPT_HEADER => 0,
+        CURLOPT_VERBOSE => 0,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_URL => $uri,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $postFields,
+    );
+}
+
+function getUri($module, $method, $responseFormat, array $requestParameters = array())
+{
+    $authtoken = variable_get('zoho_auth', NULL);
+    $uri = sprintf(
+        'https://recruit.zoho.com/recruit/private/%s/%s/%s?authtoken=%s',
+        $responseFormat,
+        $module,
+        $method,
+        $authtoken
+    );
+    return $uri . generateQueryStringByRequestParams($requestParameters);
+}
+
+function generateQueryStringByRequestParams(array $requestParameters)
+{
+    return empty($requestParameters)
+        ? ''
+        : '&' . http_build_query($requestParameters);
+}
+
+function uploadFile($candidateId, $documentType, $file)
+{
+    $additionalParams['id'] = $candidateId;
+    $additionalParams['type'] = $documentType;
+
+    $module = 'Candidates';
+    $method = 'uploadFile';
+    $responseFormat = 'xml';
+
+    $uri = getUri($module, $method, $responseFormat, $additionalParams);
+
+    $curlFile = new CURLFile($file);
+    $response = sendFile($uri, array(
+        'content' => $curlFile
+    ));
+
+    return $response;
+}
+
+function updateRecord($candidateId, $xml)
+{
+    $authtoken = variable_get('zoho_auth', NULL);
+
+    $ch2 = curl_init('https://recruit.zoho.com/recruit/private/xml/Candidates/updateRecords?');
+
+
+    curl_setopt($ch2, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch2, CURLOPT_POST, 1);
+    curl_setopt($ch2, CURLOPT_CONNECTTIMEOUT, 0);
+    curl_setopt($ch2, CURLOPT_TIMEOUT, 1000);
+
+    $query = "authtoken={$authtoken}&scope=recruitapi&id={$candidateId}&xmlData={$xml}";
+
+
+    curl_setopt($ch2, CURLOPT_POSTFIELDS, $query);
+
+    $result = curl_exec($ch2);
+    curl_close($ch2);
+
+//try to put result in XML
+    try {
+        $response = new SimpleXMLElement($result, LIBXML_NOERROR);
+    } catch (Exception $e) {
+        //Failed - probably ZOHO returned string
+        $xml = "Error: XML expected, returned: " . $result . "\nxml errors:\n" . $e;
+        watchdog('ZOHO', 'Brak połączenia z ZOHO - apply form - associate. Result: %result ', array('%result' => $xml), WATCHDOG_WARNING, $link = NULL);
+
+        /*
+        Save the XML file section for cron send
+        */
+        //If submission is null we call this function from zoho_cron, no need to export to xml
+
+        return false;
+    }
+
+//XML returned, but with response set to error - save XML to later send
+    if (isset($response->error)) {
+        $xml = "Error: XML expected, returned: " . $result . "\nxml errors:\n" . $response->error;
+        watchdog('ZOHO', 'Brak połączenia z ZOHO - apply form - associate. Result: %result ', array('%result' => $xml), WATCHDOG_WARNING, $link = NULL);
+
+        /*
+        Save the XML file section for cron send
+        */
+        //If submission is null we call this function from zoho_cron, no need to export to xml
+
+        return FALSE;
+    }
+
+//if not catch anything - return XML with ID
+    return $response;
+}
+
+function associateJobOpening($xml3, $candidateId, $submission, $JobID)
+{
+    $authtoken = variable_get('zoho_auth', NULL);
+    $ch2 = curl_init('https://recruit.zoho.com/recruit/private/xml/Candidates/associateJobOpening?');
+
+    curl_setopt($ch2, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch2, CURLOPT_POST, 1);
+    curl_setopt($ch2, CURLOPT_CONNECTTIMEOUT, 0);
+    curl_setopt($ch2, CURLOPT_TIMEOUT, 1000);
+
+    $query = "authtoken={$authtoken}&scope=recruitapi&jobIds={$JobID}&candidateIds={$candidateId}&version=2";
+
+    curl_setopt($ch2, CURLOPT_POSTFIELDS, $query);
+
+    $result = curl_exec($ch2);
+    curl_close($ch2);
+
+    //try to put result in XML
+    try {
+        $response = new SimpleXMLElement($result, LIBXML_NOERROR);
+    } catch (Exception $e) {
+        //Failed - probably ZOHO returned string
+        $xml = "Error: XML expected, returned: " . $result . "\nxml errors:\n" . $e;
+        watchdog('ZOHO', 'Brak połączenia z ZOHO - apply form - associate. Result: %result ', array('%result' => $xml), WATCHDOG_WARNING, $link = NULL);
+
+        /*
+        Save the XML file section for cron send
+        */
+        //If submission is null we call this function from zoho_cron, no need to export to xml
+        if ($submission != null) {
+            saveCandidatesXML($xml3, $submission, $JobID);
+        }
+
+        return false;
+    }
+
+    //XML returned, but with response set to error - save XML to later send
+    if (isset($response->error)) {
+        $xml = "Error: XML expected, returned: " . $result . "\nxml errors:\n" . $response->error;
+        watchdog('ZOHO', 'Brak połączenia z ZOHO - apply form - associate. Result: %result ', array('%result' => $xml), WATCHDOG_WARNING, $link = NULL);
+
+        /*
+        Save the XML file section for cron send
+        */
+        //If submission is null we call this function from zoho_cron, no need to export to xml
+        if ($submission != null) {
+            saveCandidatesXML($xml3, $submission, $JobID);
+        }
+        return FALSE;
+    }
+
+    //if not catch anything - return XML with ID
+    return $response;
+
+}
+
+function addRecords($xml3, $submission, $JobID)
+{
+
+    $authtoken = variable_get('zoho_auth', NULL);
+
+    $ch = curl_init('https://recruit.zoho.com/recruit/private/xml/Candidates/addRecords?');
+
+
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 0);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 1000);
+
+    curl_setopt($ch, CURLOPT_POST, TRUE);
+
+    $query = "authtoken={$authtoken}&scope=recruitapi&duplicateCheck=2&xmlData={$xml3}&version=2";
+
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $query);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+        "Expect:"
+    ));
+    $result = curl_exec($ch);
+
+    curl_close($ch);
+
+    //try to put result in XML
+    try {
+        $response = new SimpleXMLElement($result, LIBXML_NOERROR);
+
+    } catch (Exception $e) {
+        //Failed - probably ZOHO returned string
+        $xml = "Error: XML expected, returned: " . $result . "\nxml errors:\n" . $e;
+        watchdog('ZOHO', 'Brak połączenia z ZOHO - apply form. Result: %result ', array('%result' => $xml), WATCHDOG_WARNING, $link = NULL);
+
+        /*
+        Save the XML file section for cron send
+        */
+        //If submission is null we call this function from zoho_cron, no need to export to xml
+        if ($submission != null) {
+            saveCandidatesXML($xml3, $submission, $JobID);
+        }
+
+        return false;
+    }
+
+    //XML returned, but with response set to error - save XML to later send
+    if (isset($response->error)) {
+        $xml = "Error: XML expected, returned: " . $result . "\nxml errors:\n" . $response->error;
+        watchdog('ZOHO', 'Brak połączenia z ZOHO - apply form - addRecords. Result: %result ', array('%result' => $xml), WATCHDOG_WARNING, $link = NULL);
+
+        /*
+        Save the XML file section for cron send
+        */
+        //If submission is null we call this function from zoho_cron, no need to export to xml
+        if ($submission != null) {
+            saveCandidatesXML($xml3, $submission, $JobID);
+        }
+        return FALSE;
+    }
+
+    //if not catch anything - return XML with ID
+    return $response;
+
+}
+
+function saveCandidatesXML($xml3, $submission, $JobID)
+{
+
+    $first_name = $submission->data[1]['value'][0];
+    $last_name = $submission->data[2]['value'][0];
+    $sid = $submission->submitted;
+
+    if (!file_exists('sites/default/files/careers')) {
+        mkdir('sites/default/files/careers', 0777, true);
+    }
+
+    date_default_timezone_set("Europe/Warsaw");
+    $timestamp = "[" . date('d.m.y-h:i:sA') . "]";
+
+    try {
+        file_put_contents("sites/default/files/careers/" . "_" . $JobID . "_" . $sid . "_" . $timestamp . "_" . $first_name . "_" . $last_name . ".xml", $xml3);
+    } catch (Exception $e) {
+        date_default_timezone_set("Europe/Warsaw");
+        $data = 'Submitted: ' . date('l jS \of F Y h:i:s A', $submission->submitted) . "\n";
+        $from = 'From IP: ' . $submission->remote_addr . "\n";
+        $xml = "Error: Unable to create Candidates xml.\n" . $data . $from . "Error dump: " . $e;
+        watchdog('ZOHO', 'Błąd tworzenia Candidate.XML - apply form. Result: %result ', array('%result' => $xml), WATCHDOG_WARNING, $link = NULL);
+        return false;
+    }
+
+    return true;
+}
+
+function zohosToUpdate($zohosToUpdate)
+{
+    $log = null;
+
+    $authtoken = variable_get('zoho_auth', NULL);
+    if (empty($authtoken)) {
+        drupal_goto('error-page');
+        return "Authtoken is unreachable\n";
+    }
+
+    //dla kazdego id w zohostoupdate wyslij jego value do zoho klucz = id, value = linkor
+    foreach ($zohosToUpdate as &$entity) {
+        $jobID = $entity[0];
+        $posName = $entity[1];
+        $link = $entity[2];
+        $clean = $entity[3];
+
+        //curl to zoho
+        $xml2 = "<JobOpenings><row no=\"1\">";
+        $xml2 .= "<FL val=\"Posting title\">" . $posName . "</FL>";
+        $xml2 .= "<FL val=\"URL\">$link</FL>";
+        $xml2 .= "<FL val=\"Clear URL\">$clean</FL>";
+        $xml2 .= "</row></JobOpenings>";
+
+        $ch = curl_init('https://recruit.zoho.com/recruit/private/xml/JobOpenings/updateRecords?');
+
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 0);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 400);
+
+        curl_setopt($ch, CURLOPT_POST, TRUE);
+
+        $xml3 = urlencode($xml2);
+
+        $query = "authtoken={$authtoken}&scope=recruitapi&id={$jobID}&xmlData={$xml3}";
+
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $query);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+            "Expect:"
+        ));
+
+        $result = curl_exec($ch);
+        curl_close($ch);
+
+        $response = new SimpleXMLElement($result);
+        $log .= "Trying to add " . $posName . "\nId : " . $jobID . "\nLink : " . $link . "With result: \n" . $response->asXML();
+    }
+    return $log;
+}
+
+function zohoLIB_mail($from = 'default_from', $to, $subject, $message)
+{
+    $my_module = 'zohoLIB';
+    $my_mail_token = microtime();
+    if ($from == 'default_from') {
+        // Change this to your own default 'from' email address.
+        $from = variable_get('system_mail', 'delSol@soldevelo.com');
+    }
+    $message = array(
+        'id' => $my_module . '_' . $my_mail_token,
+        'to' => $to,
+        'subject' => $subject,
+        'body' => array($message),
+        'headers' => array(
+            'From' => $from,
+            'Sender' => $from,
+            'Return-Path' => $from,
+        ),
+    );
+    $system = drupal_mail_system($my_module, $my_mail_token);
+    $message = $system->format($message);
+
+    if ($system->mail($message)) {
+        return TRUE;
+    } else {
+        return FALSE;
+    }
+}
+
+function distributeForm($contentQuestions, $posName, $jID, $clean)
+{
+
+    $nids = db_select('node', 'n')
+        ->fields('n', array('nid'))
+        ->fields('n', array('vid'))
+        ->condition('n.vid', $jID)
+        ->execute()
+        ->fetchCol(); // returns an indexed array
+    $nodes = node_load_multiple($nids);
+
+    if (!empty($nodes)) {
+        $alias = drupal_lookup_path('alias', "node/" . $nids[0]);
+        node_delete($nids);
+    }
+
+
+    $node = new stdClass();
+    $node->type = 'page';
+    node_object_prepare($node);
+    $node->title = 'Additional interview';
+    $node->language = 'en';
+    $node->body[LANGUAGE_NONE][0]['value'] = '<h1>Please fill the form for ' . $posName . '</h1>';
+    $node->body[LANGUAGE_NONE][0]['format'] = 'full_html';
+    $node->uid = 1;
+    $node->promote = 0;
+    $node->comment = 0;
+    $node->vid = $jID;
+
+    if ($clean == "yes" || $alias == null) {
+        $alias = "careers/additional-interview-" . generateRandomString(25);
+    }
+
+    $node->path = array('alias' => $alias, 'pathauto' => 0);
+
+    $components = array();
+    $it = 0;
+
+    $components[$it] = array(
+        'name' => 'Email address',
+        'form_key' => 'email_address',
+        'type' => 'email',
+        'mandatory' => 1,
+        'weight' => 0,
+        'pid' => 0,
+        'extra' => array(
+            'title_display' => 'before',
+            'private' => 0,
+        ),
+    );
+    $it++;
+
+    foreach ($contentQuestions as $field) {
+        if ($field[0] == "TEXTFIELD") {
+            $components[$it] = array(
+                'name' => $field[1],
+                'form_key' => ('text' . generateRandomString()),
+                'type' => 'textfield',
+                'mandatory' => 1,
+                'weight' => $it,
+                'pid' => 0,
+                'extra' => array(
+                    'title_display' => 'before',
+                    'private' => 0,
+                )
+            );
+            $it++;
+        }
+
+        if ($field[0] == "TEXTAREA") {
+            $components[$it] = array(
+                'name' => $field[1],
+                'form_key' => ('textarea' . generateRandomString()),
+                'type' => 'textarea',
+                'mandatory' => 1,
+                'weight' => $it,
+                'pid' => 0,
+                'extra' => array(
+                    'title_display' => 'before',
+                    'private' => 0,
+                )
+            );
+            $it++;
+        }
+
+        if ($field[0] == "SELECTOPT") {
+
+            $items = null;
+            $multiple = false;
+
+            for ($i = 0; $i < $field[3]; $i++) {
+                //$items .= generateRandomString(7)."|".$field[$i+4];
+                $items .= $field[$i + 4] . "|" . $field[$i + 4];
+                if ($i + 1 < $field[3]) {
+                    $items .= "\n";
+                }
+            }
+
+            if ($field[2] === "T") {
+                $multiple = true;
+            }
+
+            $components[$it] = array(
+                'name' => $field[1],
+                'form_key' => ('select' . generateRandomString()),
+                'type' => 'select',
+                'mandatory' => 1,
+                'weight' => $it,
+                'pid' => 0,
+                'extra' => array(
+                    'title_display' => 'before',
+                    'private' => 0,
+                    'items' => $items,
+                    'aslist' => 1,
+                    'multiple' => $multiple,
+                ),
+            );
+            $it++;
+        }
+
+        if ($field[0] == "TIME") {
+            $components[$it] = array(
+                'form_key' => ('time' . generateRandomString()),
+                'name' => $field[1],
+                'type' => 'time',
+                'extra' => array(
+                    'timezone' => 'site',
+                    'hourformat' => '24-hour',
+                ),
+                'mandatory' => 1,
+                'pid' => 0,
+                'weight' => $it,
+            );
+            $it++;
+        }
+
+        if ($field[0] == "FILE") {
+            //TODO
+        }
+
+        if ($field[0] == "DATE") {
+            $components[$it] = array(
+                'form_key' => ('date' . generateRandomString()),
+                'name' => $field[1],
+                'type' => 'date',
+                'extra' => array(
+                    'timezone' => 'site',
+                    'start_date' => '-50 years',
+                    'end_date' => '+50 years',
+                ),
+                'mandatory' => '0',
+                'pid' => '0',
+                'weight' => $it,
+            );
+            $it++;
+        }
+
+        if ($field[0] == "NUM") {
+            $components[$it] = array(
+                'form_key' => ('num' . generateRandomString()),
+                'name' => $field[1],
+                'type' => 'number',
+                'extra' => array(
+                    'type' => 'textfield',
+                    'integer' => 1,
+                ),
+                'mandatory' => '1',
+                'pid' => '0',
+                'weight' => $it,
+            );
+            $it++;
+        }
+
+        if ($field[0] == "GRID") {
+            // GRID NAME NQUESTIONS NOPTS OPT1..OPTN Q1..QN
+            $options = null;
+            $nOptions = $field[3];
+            $questions = null;
+            $nQuestions = $field[2];
+            $multiple = false;
+
+            for ($i = 0; $i < $nOptions; $i++) {
+                // $options .= generateRandomString(3)."|".$field[$i+4+$nQuestions];
+                $options .= $field[$i + 4 + $nQuestions] . "|" . $field[$i + 4 + $nQuestions];
+                if ($i + 1 < $nOptions) {
+                    $options .= "\n";
+                }
+            }
+
+            for ($i = 0; $i < $nQuestions; $i++) {
+                //$questions .= generateRandomString(3)."|".$field[$i+4];
+                $questions .= $field[$i + 4] . "|" . $field[$i + 4];
+                if ($i + 1 < $nQuestions) {
+                    $questions .= "\n";
+                }
+            }
+
+
+            $components[$it] = array(
+                'name' => $field[1],
+                'form_key' => ('grid' . generateRandomString()),
+                'type' => 'grid',
+                'mandatory' => 1,
+                'weight' => $it,
+                'pid' => 0,
+                'extra' => array(
+                    'title_display' => 'before',
+                    'private' => 0,
+                    'questions' => $questions,
+                    'options' => $options,
+                ),
+            );
+            $it++;
+        }
+
+        if ($field[0] == "BREAK") {
+            $components[$it] = array(
+                'form_key' => ('break' . generateRandomString()),
+                'type' => 'pagebreak',
+                'weight' => $it,
+                'pid' => 0,
+            );
+            $it++;
+        }
+    }
+
+    $emails = array(
+        array(
+            'email' => 'somebody@example.tld',
+            'subject' => 'default',
+            'from_name' => 'default',
+            'from_address' => 'default',
+            'template' => 'default',
+            'excluded_components' => array(),
+        ),
+    );
+
+
+    $node->webform = array(
+        'confirmation' => '',
+        'confirmation_format' => NULL,
+        'redirect_url' => '<confirmation>',
+        'status' => '1',
+        'block' => '0',
+        'teaser' => '0',
+        'allow_draft' => '0',
+        'auto_save' => '0',
+        'submit_notice' => '1',
+        'submit_text' => '',
+        'submit_limit' => '-1', // User can submit more than once.
+        'submit_interval' => '-1',
+        'total_submit_limit' => '-1',
+        'total_submit_interval' => '-1',
+        'record_exists' => TRUE,
+        'roles' => array(
+            0 => '1', // Anonymous user can submit this webform.
+        ),
+        'emails' => $emails,
+        'components' => $components,
+    );
+    node_save($node);
+    return ($alias . "\n");
+}
+
+function nodeCleanup($activeIDs)
+{
+    $nids = db_select('node', 'n')
+        ->fields('n', array('nid'))
+        ->fields('n', array('title'))
+        ->condition('n.title', 'Additional interview')
+        ->execute()
+        ->fetchCol();
+    $nodes = node_load_multiple($nids);
+
+    foreach ($nodes as &$n) {
+        $found = false;
+        foreach ($activeIDs as &$jID) {
+            if ($n->vid == $jID) {
+                $found = true;
+            }
+        }
+        if (!$found) {
+            node_delete($n->nid);
+        }
+    }
+}
+
+function zohoLIB_cron()
+{
+
+    $authtoken = variable_get('zoho_auth', NULL);
+    $files_to_update = array_diff(scandir("sites/default/files/careers"), array('..', '.'));
+    include_once(drupal_get_path('module', 'webform') . '/includes/webform.submissions.inc');
+
+
+    //For each file in careers folder - to send to ZOHO
+    foreach ($files_to_update as $file) {
+        try {
+            $xml = file_get_contents("sites/default/files/careers/" . $file);
+            //get JobID from filename
+            $JobID = null;
+            $exploded = explode("_", $file);
+            $JobID = $exploded[1];
+
+            //get submission->submitted from file name as a key value
+            $submitted = null;
+            $submitted = $exploded[2];
+
+            //get proper submission row
+            $submissions = webform_get_submissions(array('nid' => 61, 'submitted' => $submitted));
+
+            $result = addRecords($xml, null, $JobID);
+
+            //Add records function returned something;
+            if ($result) {
+                sleep(5);
+                $result = associateJobOpening($xml, $result->result->recorddetail->FL, null, $JobID);
+                if ($result != false) {
+                    $path = 'public://careers/' . $file;
+                    file_unmanaged_delete($path);
+
+                    if (!empty($submissions)) {
+                        //get the first row of submission
+                        $submissions = reset($submissions);
+                        $node = node_load(61);
+
+                        db_delete('webform_submitted_data')
+                            ->condition('nid', $node->nid)
+                            ->condition('sid', $submissions->sid)
+                            ->execute();
+
+                        db_delete('webform_submissions')
+                            ->condition('nid', $node->nid)
+                            ->condition('sid', $submissions->sid)
+                            ->execute();
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            $xml = "Error: : " . $result . "\nxml errors:\n" . $e;
+            watchdog('ZOHO', 'ZOHO - cron. Result: %result ', array('%result' => $xml), WATCHDOG_WARNING, $link = NULL);
+        }
+    }
+}
+
+function zohoLibCreateLead($IncData, $nid)
+{
+    //IncData: Data from submission
+    //NID: 71 - Landing pages, 6 - Contact form
+
+    $authtoken_leads = variable_get('zoho_auth_leads', NULL);
+    if (empty($authtoken_leads)) {
+        drupal_goto('error-page');
+        return;
+    }
+
+    if (!(strcmp($nid, 71))) {
+
+        $description = "Date: " . $IncData['sub-date'] . "\nReferer: " . $IncData['referer'] . "\n\nMessage: " . $IncData['message'];
+
+        $xml2 = "<Leads><row no=\"1\">";
+        $xml2 .= "<FL val=\"Lead Owner\">klider@soldevelo.com</FL>";
+        $xml2 .= "<FL val=\"First Name\">" . $IncData['first_name'] . "</FL>";
+        $xml2 .= "<FL val=\"Last Name\">" . $IncData['last_name'] . "</FL>";
+        $xml2 .= "<FL val=\"Company\">" . $IncData['company'] . "</FL>";
+        $xml2 .= "<FL val=\"Email\">" . $IncData['email'] . "</FL>";
+        $xml2 .= "<FL val=\"Description\">" . $description . "</FL>";
+        $xml2 .= "</row></Leads>";
+    } else if (!(strcmp($nid, 6))) {
+        $description = "Where you hear: " . $IncData['where_quote'] . "\nMessage: " . $IncData['message'];
+
+        $xml2 = "<Leads><row no=\"1\">";
+        //$xml2.="<FL val=\"Lead Owner\">adresnaspam@mailplus.pl</FL>";
+        $xml2 .= "<FL val=\"Lead Owner\">klider@soldevelo.com</FL>";
+        $xml2 .= "<FL val=\"First Name\">" . $IncData['first_name'] . "</FL>";
+        $xml2 .= "<FL val=\"Last Name\">" . $IncData['last_name'] . "</FL>";
+        $xml2 .= "<FL val=\"Company\">" . $IncData['company'] . "</FL>";
+        $xml2 .= "<FL val=\"Email\">" . $IncData['email'] . "</FL>";
+        $xml2 .= "<FL val=\"Title\">" . $IncData['jobtitle'] . "</FL>";
+        $xml2 .= "<FL val=\"Mobile\">" . $IncData['phone'] . "</FL>";
+        $xml2 .= "<FL val=\"Country\">" . $IncData['country'] . "</FL>";
+        $xml2 .= "<FL val=\"Description\">" . $description . "</FL>";
+        $xml2 .= "</row></Leads>";
+    }
+
+    $ch_zoho = curl_init('https://crm.zoho.com/crm/private/xml/Leads/insertRecords?');
+
+    curl_setopt($ch_zoho, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch_zoho, CURLOPT_CONNECTTIMEOUT, 0);
+    curl_setopt($ch_zoho, CURLOPT_TIMEOUT, 400);
+    curl_setopt($ch_zoho, CURLOPT_POST, TRUE);
+
+    $xml3 = urlencode($xml2);
+
+    $query_zoho = "newFormat=1&authtoken={$authtoken_leads}&scope=crmapi&xmlData={$xml3}";
+
+    curl_setopt($ch_zoho, CURLOPT_POSTFIELDS, $query_zoho);
+    curl_setopt($ch_zoho, CURLOPT_HTTPHEADER, array(
+        "Expect:"
+    ));
+
+    $result_zoho = curl_exec($ch_zoho);
+    $response_zoho = new SimpleXMLElement($result_zoho);
+
+}
+
+function createBenefitsList($JobL)
+{
+    if (!strcmp($JobL, "ENG")) {
+        $wrapper =
+            '<div class="row-fluid list-group">
+        <div class="item  span2 grid-group-item" id="benefits-first-row">
+        	<div class="thumbnail2" title="where you can relax between your duties (table football, table tennis, xbox)">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon  icon-puzzle-piece"></i><br/>
+                        Social Room</h4>
+                </div>
+			</div>
+		</div>
+		<div class="item  span2 grid-group-item">
+        	<div class="thumbnail2" title="every day to increase your level of sugar and energy">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon icon-food"></i><br/>
+                        Fresh fruits</h4>
+                </div>
+			</div>
+		</div>
+		<div class="item  span2 grid-group-item">
+        	<div class="thumbnail2" title="to get to know each other better and have some fun">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon icon-glass "></i><br/>
+                        Events</h4>
+                </div>
+			</div>
+		</div>
+		<div class="item  span2 grid-group-item">
+        	<div class="thumbnail2" title="with 50zł per month for e-books to stimulate your imagination and creativity">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon icon-tablet"></i><br/>
+                        Amazon Kindle</h4>
+                </div>
+			</div>
+		</div>
+		<div class="item  span2 grid-group-item">
+        	<div class="thumbnail2" title="to take care of our health">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon icon-medkit "></i><br/>
+                        Private health care</h4>
+                </div>
+			</div>
+		</div>
+	</div>
+	<div class="row-fluid list-group">
+	    <div class="item  span2 grid-group-item2">
+        	<div class="thumbnail2" title="MultiSport card and weekly football matches to actively spend time ">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon icon-credit-card"></i><br/>
+                        MultiSport</h4>
+                </div>
+			</div>
+		</div>
+        <div class="item  span2 grid-group-item2">
+        	<div class="thumbnail2" title="clear and attractive career path">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon icon-road"></i><br/>
+                        Open career path </h4>
+                </div>
+			</div>
+		</div>
+		        <div class="item  span2 grid-group-item2">
+        	<div class="thumbnail2" title="certificates funding and regular internal and external trainings">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon icon-edit"></i><br/>
+                        Career development</h4>
+                </div>
+			</div>
+		</div>
+		        <div class="item  span2 grid-group-item2">
+        	<div class="thumbnail2" title="the opportunity to participate in interesting and diverse projects using diverse technologies">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon icon-sitemap"></i><br/>
+                        The diversity of projects</h4>
+                </div>
+			</div>
+		</div>
+		        <div class="item  span2 grid-group-item2">
+        	<div class="thumbnail2" title="competitive salary adequate to your skills and experience">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon icon-money"></i><br/>
+                        Competitive salary</h4>
+                </div>
+			</div>
+		</div>
+
+
+	</div>
+
+
+	';
+    } else {
+        $wrapper =
+            '<div class="row-fluid list-group">
+        <div class="item  span2 grid-group-item" id="benefits-first-row">
+        	<div class="thumbnail2" title="tak relaksujemy się pomiędzy naszymi obowiązkami (piłkarzyki, tenis stołowy, Xbox + Kinect).">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon  icon-puzzle-piece"></i><br/>
+                        Pokój socjalny</h4>
+                </div>
+			</div>
+		</div>
+		<div class="item  span2 grid-group-item">
+        	<div class="thumbnail2" title="każdego dnia, aby podnieść poziom cukru i energii.">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon icon-food"></i><br/>
+                        Świeże owoce</h4>
+                </div>
+			</div>
+		</div>
+		<div class="item  span2 grid-group-item">
+        	<div class="thumbnail2" title="aby lepiej się poznać oraz dobrze się bawić.">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon icon-glass "></i><br/>
+                        Imprezy integracyjne</h4>
+                </div>
+			</div>
+		</div>
+		<div class="item  span2 grid-group-item">
+        	<div class="thumbnail2" title="oraz 50 zł/miesiąc do wydania na e-booki, aby pobudzać naszą wyobraźnię oraz kreatywność.">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon icon-tablet"></i><br/>
+                        Amazon Kindle</h4>
+                </div>
+			</div>
+		</div>
+		<div class="item  span2 grid-group-item">
+        	<div class="thumbnail2" title="aby dbać o nasze zdrowie.">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon icon-medkit "></i><br/>
+                        Prywatna opieka medyczna</h4>
+                </div>
+			</div>
+		</div>
+	</div>
+	<div class="row-fluid list-group">
+	    <div class="item  span2 grid-group-item2">
+        	<div class="thumbnail2" title=" Karty MultiSport i cotygodniowe mecze piłki nożnej, aby aktywnie spędzać czas. ">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon icon-credit-card"></i><br/>
+                        MultiSport</h4>
+                </div>
+			</div>
+		</div>
+        <div class="item  span2 grid-group-item2">
+        	<div class="thumbnail2" title="Wyraźnie zarysowana i atrakcyjna ścieżka kariery.">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon icon-road"></i><br/>
+                        Otwarta ścieżka kariery </h4>
+                </div>
+			</div>
+		</div>
+		        <div class="item  span2 grid-group-item2">
+        	<div class="thumbnail2" title="Dofinansowanie zdawanych certyfikatów, cykliczne szkolenia wewnętrzne i zewnętrzne.">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon icon-edit"></i><br/>
+                        Rozwój zawodowy</h4>
+                </div>
+			</div>
+		</div>
+		        <div class="item  span2 grid-group-item2">
+        	<div class="thumbnail2" title="Możliwość uczestniczenia w interesujących i różnorodnych projektach z wykorzystaniem wielu technologii. ">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon icon-sitemap"></i><br/>
+                        Różnorodność projektów</h4>
+                </div>
+			</div>
+		</div>
+		        <div class="item  span2 grid-group-item2">
+        	<div class="thumbnail2" title="Konkurencyjne wynagrodzenie adekwatne do posiadanych umiejętności i doświadczenia.">
+        		<div class="caption">
+
+                    <h4 class="benefit-list-heading">
+                    <i class="icon icon-money"></i><br/>
+                        Atrakcyjne wynagrodzenie</h4>
+                </div>
+			</div>
+		</div>
+
+
+	</div>
+
+
+	';
+    }
+    return $wrapper;
+}
+
+function zohoLIB_form_alter(&$form, &$form_state, $form_id){
+    // preprocess webform nid 61 (apply-form) to hide desired net salary based
+    // on setting on ZOHO
+    watchdog('webform', 'Career form keys. Result: %result ', array('%result' => join(' | ', array_keys($form))), WATCHDOG_INFO, $link = NULL);
+    if($form['#node']->webform['nid'] == '61') {
+        $offer_node = node_load($_GET['nid']);
+        if(!$offer_node) {
+            drupal_set_message('Invalid node ID. Please contact the administrator.', 'error');
+        }
+        // now based if $show_net_salary is true we hide the net salary
+        if(!$offer_node->field_show_net_salary[LANGUAGE_NONE][0]['value']){
+            unset($form['submitted']['twoje_oczekiwania_finansowe_netto_miesic']);
+        }
+    }
+}

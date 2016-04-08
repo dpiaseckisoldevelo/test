@@ -1,0 +1,446 @@
+<?php
+//przed renderowaniem newsletter-formularza
+function assemblaintegrationlib_form_webform_client_form_69_alter(&$form, &$form_state) {
+	$form['actions']['submit']['#attributes']['class'][] = 'override-btn';
+	$form['actions']['submit']['#value'] = 'Go!';	
+	
+}
+
+function assemblaintegrationlib_form_webform_client_form_71_alter(&$form, &$form_state) {
+	$form['actions']['submit']['#attributes']['class'] = array('override-btn-lp');
+	$form['actions']['submit']['#value'] = 'Send us a Message!';
+	
+	$referer = $_SERVER["HTTP_REFERER"];
+	$temp_split = explode("/",$referer);
+	$referer = $temp_split[3];
+	
+	(isset($_SESSION['RefID'])) ? $REF_ID=$_SESSION['RefID'] : $_SESSION['RefID']=$referer;
+	
+}
+
+/**
+ * Modify a Webform submission, prior to saving it in the database.
+ *
+ * @param $node
+ *   The Webform node on which this submission was made.
+ * @param $submission
+ *   The Webform submission that is about to be saved to the database.
+ */
+ 
+
+function assemblaintegrationlib_webform_submission_presave($node, &$submission) {
+	//SubmissionLog2File
+	$subLog = fopen('submission-log.txt', "a+");
+	$remoteADR = $submission->remote_addr;
+	
+	//landing-pages-contact-form
+	if(!(strcmp($node->nid,71))) {
+		
+		$referer = $_SERVER["HTTP_REFERER"];
+		$temp_split = explode("/",$referer);
+		$referer = $temp_split[3];
+
+		if (isset($_SESSION['RefID'])) 
+		{
+		
+			$referer=$_SESSION['RefID']; 
+		
+		}
+		
+		/*
+		$milestone = "5959693";
+		$api_secret= "2c78c6088e9d6523ea3873af79e46750bbce5269";
+		$api_key = "b20444aee8f3e3bc3465";
+		$api_url = "https://api.assembla.com/v1/spaces/testowy-/tickets.json";
+		*/
+		 //prod cred 
+		 
+		$milestone = "5713333"; //inq. milestone
+		$api_secret= "4cc3fe96a03610526584a7013d9305fbc0cd39dc";
+		$api_key = "db6fc81e9f34c05a7b3f";
+		$api_url = "https://api.assembla.com/v1/spaces/sd_marketing/tickets.json";
+		$assign_to = "axxEGCrAur4jAJeJe5cbCb"; //KLider
+		
+		date_default_timezone_set("Europe/Warsaw"); 
+		$data =  date('l jS \of F Y h:i:s A');
+		
+		//data_from_submission;
+		$first_name = htmlspecialchars($submission->data[2]['value'][0],ENT_COMPAT,'ISO-8859-1', true);
+		$last_name = htmlspecialchars($submission->data[3]['value'][0],ENT_COMPAT,'ISO-8859-1', true);
+		$email = htmlspecialchars($submission->data[4]['value'][0],ENT_COMPAT,'ISO-8859-1', true);
+		$company = htmlspecialchars($submission->data[5]['value'][0],ENT_COMPAT,'ISO-8859-1', true);
+		$message = htmlspecialchars($submission->data[1]['value'][0],ENT_COMPAT,'ISO-8859-1', true);
+		
+
+		
+		zohoLibCreateLead(array( "first_name" => $first_name,
+			"last_name" => $last_name,
+			"email" => $email,
+			"company" => $company,
+			"message" => $message,
+			"referer" => $referer,
+			"sub-date" => $data ),$node->nid);
+		
+		$array = array(
+			'summary' => "$first_name $last_name $email $company Ref:$referer",
+			'priority' => "3",
+			'description' => "*First-name:* $first_name\n *Last-name:* $last_name\n *Email:* $email\n *Company:* $company\n *Referer-url:* $referer\n *Submission-Date:* $data\n\n *Message:* $message\n",
+			'milestone-id' => "$milestone",
+			'assigned-to-id' => "$assign_to"
+		);
+		
+		$ticketdata_lp = (string)array2xml($array);
+		
+		//DEBUG DATA
+		//$f = fopen('request.txt', 'w');
+		
+		//Create POST request with cURL lib
+		$ch_lp = curl_init();
+		curl_setopt($ch_lp, CURLOPT_URL, $api_url);
+		//curl_setopt($ch, CURLOPT_VERBOSE, TRUE);
+		curl_setopt($ch_lp, CURLOPT_POST, TRUE);
+		curl_setopt($ch_lp, CURLOPT_HEADER, TRUE);
+		curl_setopt($ch_lp, CURLOPT_SSL_VERIFYPEER,FALSE);
+		curl_setopt($ch_lp, CURLOPT_SSL_VERIFYHOST,FALSE);
+		curl_setopt($ch_lp, CURLOPT_RETURNTRANSFER, TRUE);
+		//curl_setopt($ch, CURLOPT_STDERR, $f);
+		curl_setopt($ch_lp, CURLOPT_POSTFIELDS, $ticketdata_lp);
+		curl_setopt($ch_lp, CURLOPT_HTTPHEADER, array(
+			"Content-type: application/xml",
+			"X-Api-Secret: $api_secret",
+			"X-Api-Key: $api_key"
+		));
+		
+		$result = curl_exec($ch_lp);
+		
+		//Get the status for curl execution
+		$arr = explode("\n", $result);
+		$status="";
+		
+		foreach($arr as $key=>$value) {		
+			if (strpos($value,'Status:') !== false) {
+				$status = $value;
+			}
+		}		
+
+		$allInfo ="[".$data."]\r\nModule:\tLANDING-PAGE\r\n".$status."\r\nIP:\t".$remoteADR."\r\nFirstName:\t".$first_name."\r\nLastName:\t".$last_name."\r\nEmail:\t\t".$email."\r\nCompany:\t".$company."\r\nMessage:\t".$message."\r\n\r\n";		
+		fwrite($subLog,$allInfo);
+		
+		//fclose($f);
+		curl_close($ch_lp);
+		
+		unset($_SESSION['RefID']);
+		$_SESSION["Name"] = $submission->data[2]['value'][0]." ".$submission->data[3]['value'][0];
+		$_SESSION["E-mail"] = $submission->data[4]['value'][0];
+		$randomID = generateRandomString();
+		drupal_goto('success-form',array('query'=>array('id' =>$randomID)));
+		
+	}
+
+
+	//obsluga formularza newsletter'a
+	if(!(strcmp($node->nid,69))) {
+		
+		//test-Credentials
+		/*
+		$milestone = "5959693";
+		$api_secret= "2c78c6088e9d6523ea3873af79e46750bbce5269";
+		$api_key = "b20444aee8f3e3bc3465";
+		$api_url = "https://api.assembla.com/v1/spaces/testowy-/tickets.json";
+		*/
+		
+		$milestone = "5946303";
+		$api_secret= "4cc3fe96a03610526584a7013d9305fbc0cd39dc";
+		$api_key = "db6fc81e9f34c05a7b3f";
+		$api_url = "https://api.assembla.com/v1/spaces/sd_marketing/tickets.json";
+		
+		
+		date_default_timezone_set("Europe/Warsaw"); 
+		$data =  date('l jS \of F Y h:i:s A');
+		
+		$email = htmlspecialchars($submission->data[2]['value'][0],ENT_COMPAT,'ISO-8859-1', true);
+
+		$array = array(
+			'summary' => "$email",
+			'priority' => "3",
+			'description' => "*E-mail-address:* $email\n\n *Date-registered:* $data\n",
+			'milestone-id' => "$milestone",
+		);
+
+		$ticketdata = (string)array2xml($array);
+		
+		//DEBUG DATA
+		//$f = fopen('request.txt', 'w');
+		
+		//Create POST request with cURL lib
+		$ch = curl_init();
+		curl_setopt($ch, CURLOPT_URL, $api_url);
+		//curl_setopt($ch, CURLOPT_VERBOSE, TRUE);
+		curl_setopt($ch, CURLOPT_POST, TRUE);
+		curl_setopt($ch, CURLOPT_HEADER, TRUE);
+		curl_setopt($ch, CURLOPT_SSL_VERIFYPEER,FALSE);
+		curl_setopt($ch, CURLOPT_SSL_VERIFYHOST,FALSE);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+		//curl_setopt($ch, CURLOPT_STDERR, $f);
+		curl_setopt($ch, CURLOPT_POSTFIELDS, $ticketdata);
+		curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+		"Content-type: application/xml",
+		"X-Api-Secret: $api_secret",
+		"X-Api-Key: $api_key"
+		
+		));
+		
+		$result = curl_exec($ch);
+		
+		//Get the status for curl execution
+		$arr = explode("\n", $result);
+		$status="";
+		
+		foreach($arr as $key=>$value) {		
+			if (strpos($value,'Status:') !== false) {
+				$status = $value;
+			}
+		}		
+
+		$allInfo ="[".$data."]\r\nModule:\tNEWSLETTER\r\n".$status."\r\nIP:\t".$remoteADR."\r\nEmail:\t".$email."\r\n\r\n";		
+		fwrite($subLog,$allInfo);
+		
+		
+		
+		//fclose($f);
+		curl_close($ch);
+			
+	}
+
+	//formularz kontatkowy -contact-us
+	if(!(strcmp($node->nid,6))) {
+
+        /*
+        $milestone = "7585213";
+        $api_secret= "2c78c6088e9d6523ea3873af79e46750bbce5269";
+        $api_key = "b20444aee8f3e3bc3465";
+        $api_url = "https://api.assembla.com/v1/spaces/testowy-/tickets.json";
+
+        $user_krystian ="azIRk83OWr5ikPacwqEsg8";
+        $user_piotr ="ba9TXY3OWr5ikracwqjQXA";
+        $user_kubik ="cy3qv43Omr5ikPacwqEsg8";
+        $user_susan ="byTgYk3OWr5ikPacwqEsg8";
+        */
+
+
+        //Credentials for Assembla API
+        $milestone = "5713333"; //inq. milestone
+        $api_secret= "4cc3fe96a03610526584a7013d9305fbc0cd39dc";
+        $api_key = "db6fc81e9f34c05a7b3f";
+        $assign_to = "axxEGCrAur4jAJeJe5cbCb"; //KLider
+        $api_url = "https://api.assembla.com/v1/spaces/sd_marketing/tickets.json";
+
+        $user_mikolaj = "d6u2kcsvir5ioiacwqjQYw";
+        $user_krystian = "axxEGCrAur4jAJeJe5cbCb";
+        $user_milena = "a2PRS0QSOr5k0udmr6bg7m";
+
+		//data_from_submission;
+
+
+
+		$first_name = htmlspecialchars($submission->data[1]['value'][0],ENT_COMPAT,'ISO-8859-1', true);
+		$last_name = htmlspecialchars($submission->data[2]['value'][0],ENT_COMPAT,'ISO-8859-1', true);
+		$email = htmlspecialchars($submission->data[3]['value'][0],ENT_COMPAT,'ISO-8859-1', true);
+		$phone = htmlspecialchars($submission->data[4]['value'][0],ENT_COMPAT,'ISO-8859-1', true);
+		$company = htmlspecialchars($submission->data[5]['value'][0],ENT_COMPAT,'ISO-8859-1', true);
+		$jobtitle = htmlspecialchars($submission->data[6]['value'][0],ENT_COMPAT,'ISO-8859-1', true);
+		$country = htmlspecialchars($submission->data[7]['value'][0],ENT_COMPAT,'ISO-8859-1', true);
+		$where_quote = htmlspecialchars($submission->data[8]['value'][0],ENT_COMPAT,'ISO-8859-1', true);
+		$message = htmlspecialchars($submission->data[9]['value'][0],ENT_COMPAT,'ISO-8859-1', true);
+		//$sales = htmlspecialchars($submission->data[10]['value'][0],ENT_COMPAT,'ISO-8859-1', true);
+		$remote_addr = $submission->remote_addr;
+		
+		date_default_timezone_set("Europe/Warsaw"); 
+		$data =  date('l jS \of F Y h:i:s A');
+	
+		$isSpam = false;
+		
+		//Check SPAM IP from http://www.stopforumspam.com/
+		$stopspam_url = "http://api.stopforumspam.org/api?ip=".urlencode($remote_addr)."&f=json";
+		
+		$spamReq = curl_init();
+		curl_setopt($spamReq, CURLOPT_URL, $stopspam_url);
+		curl_setopt($spamReq, CURLOPT_HEADER, FALSE);
+		curl_setopt($spamReq, CURLOPT_RETURNTRANSFER, TRUE);
+		curl_setopt($spamReq, CURLOPT_FOLLOWLOCATION, true);
+		$spamResult = curl_exec($spamReq);
+		curl_close($spamReq);
+		
+		$spamResultArray = json_decode($spamResult,TRUE);
+		
+		$status="";
+		if ($spamResultArray["success"] == 1) {			
+			$freq = $spamResultArray["ip"]["frequency"];
+			//echo $freq;
+			if ($freq > 20) {
+				$isSpam = true;
+			}
+		}
+		else {
+			$status="SPAM check failed. ";
+		}
+
+		if (!$isSpam) {
+
+			zohoLibCreateLead(array( "first_name" => $first_name,
+				"last_name" => $last_name,
+				"email" => $email,
+				"phone" => $phone,
+				"company" => $company,
+				"jobtitle" => $jobtitle,
+				"country" => $country,
+				"where_quote" => $where_quote,
+				"message" => $message),$node->nid);
+
+
+
+            /*
+             * Turned down
+
+            //replace the name with Assembla' id
+
+            if (!(strcmp($sales,"mikolaj"))) {
+                $assign_to = $user_mikolaj;
+            }
+            else if (!(strcmp($sales,"milena"))) {
+                $assign_to = $user_milena;
+            }
+            else if (!(strcmp($sales,"general"))) {
+                $assign_to = $user_krystian;
+            }
+            */
+
+				$array = array(
+				'summary' => "$first_name $last_name $email $company $country",
+				'priority' => "3",
+				'description' => "*From IP:* $remote_addr\n *First-name:* $first_name\n *Last-name:* $last_name\n *Email:* $email\n *Phone:* $phone\n *Company:* $company\n *Job-title:* $jobtitle\n *Country:* $country \n *Where-you-hear:*  $where_quote\n *Message:* $message",
+				'milestone-id' => "$milestone",
+				'assigned-to-id' => "$user_krystian",
+                'notification_list' => "$user_krystian"
+
+				);
+
+				$ticketdata = (string)array2xml($array);
+
+				//DEBUG DATA
+				//$f = fopen('request.txt', 'w');
+				//Create POST request with cURL lib
+				$ch = curl_init();
+				curl_setopt($ch, CURLOPT_URL, $api_url);
+				//curl_setopt($ch, CURLOPT_VERBOSE, TRUE);
+				curl_setopt($ch, CURLOPT_POST, TRUE);
+				curl_setopt($ch, CURLOPT_HEADER, TRUE);
+				curl_setopt($ch, CURLOPT_SSL_VERIFYPEER,FALSE);
+				curl_setopt($ch, CURLOPT_SSL_VERIFYHOST,FALSE);
+				curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+				//curl_setopt($ch, CURLOPT_STDERR, $f);
+				curl_setopt($ch, CURLOPT_POSTFIELDS, $ticketdata);
+				curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+				"Content-type: application/xml",
+				"X-Api-Secret: $api_secret",
+				"X-Api-Key: $api_key"
+				));
+			
+			$result = curl_exec($ch);
+			curl_close($ch);
+			
+			//Get the status for curl execution
+			$arr = explode("\n", $result);
+			
+			
+			foreach($arr as $key=>$value) {		
+				if (strpos($value,'Status:') !== false) {
+					$status = $status . $value;
+				}
+			}
+		}
+		else {
+			$status = "Message is rejected due to SPAM suspicion with freq => ".$freq;
+		}
+
+	$allInfo ="[".$data."]\r\nModule:\tCONTACT-US\r\n".$status."\r\nIP:\t".$remoteADR."\r\nFirstName:\t".$first_name."\r\nLastName:\t".$last_name."\r\nEmail:\t\t".$email."\r\nPhone:\t\t".$phone."\r\nCompany:\t".$company."\r\nJobTitle:\t".$jobtitle."\r\nCountry:\t".$country."\r\nWhere-Quote:\t".$where_quote."\r\nMessage:\t".$message."\r\n\r\n";		
+	fwrite($subLog,$allInfo);
+	
+	//fclose($f);
+
+	$_SESSION["Name"] = $submission->data[1]['value'][0]." ".$submission->data[2]['value'][0];
+	$_SESSION["E-mail"] = $submission->data[3]['value'][0];
+	$randomID = generateRandomString();
+	drupal_goto('success-form',array('query'=>array('id' =>$randomID)));
+	
+	}	
+}
+
+function array2xml($array, $xml = false){
+    if($xml === false){
+        $xml = new SimpleXMLElement('<ticket/>');
+    }
+    foreach($array as $key => $value){
+        if(is_array($value)){
+            array2xml($value, $xml->addChild($key));
+        }else{
+            $xml->addChild($key, $value);
+        }
+    }
+    return $xml->asXML();
+}
+
+
+function assemblaintegrationlib_block_info() {
+        $blocks = array();
+        $blocks['success-form'] = array(
+                'info' => t('Success-Form-Block'),
+                'cache' => DRUPAL_CACHE_GLOBAL,
+        );
+		
+        return $blocks;
+}
+ 
+/**
+ * Implements hook_block_view().
+ * 
+ * This function tells drupal how to define our block when viewed.
+ *
+ * For more information on this function, see:
+ * http://api.drupal.org/api/drupal/modules block block.api.php/function/hook_block_view/7
+ */
+function assemblaintegrationlib_block_view($delta = '') {
+        $block = array();
+        switch($delta) {
+                case 'success-form':
+						if(empty($_GET['id'])) {
+							drupal_goto('front');	
+							return;
+						}
+						$block['subject'] = t('');
+						$block['content'] = array(
+							'#markup' => successFormContent(),
+							'#prefix' => '<div id="success">',
+							'#suffix' => '</div>',);
+						 
+                break;
+        }	
+		
+        return $block;
+}
+
+function successFormContent(){
+$output = "";
+
+(isset($_SESSION['Name'])) ? $Name=$_SESSION['Name'] : $Name=' ';
+(isset($_SESSION['E-mail'])) ? $Email=$_SESSION['E-mail'] : $Email=' ';
+
+$output .= "<h2>Thank You {$Name}</h2><br/>We have received your inquiry. You should expect a reply from a representative of our company within 48 hours by email at {$Email}.<br/><br/>Occasionally we receive a very large number of messages, and your response may take a little longer. If this occurs, we appreciate your patience, and we assure you that you will receive a response.
+<br/><br/>Thank you for taking the time to contact us. Have a great day,<br/>
+SolDevelo.com Team";
+
+return $output;
+
+}
+
+

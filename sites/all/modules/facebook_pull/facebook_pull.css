@@ -1,0 +1,55 @@
+ul.facebook-feed { list-style-type: none; margin: 0; padding: 0; background: none; }
+ul.facebook-feed li { list-style-type: none; margin: 0 0 10px 0; padding: 0; }
+ul.facebook-feed .facebook-feed-picture { float: left; margin-right: 5px; margin-bottom: 2px; }
+ul.facebook-feed .facebook-feed-from { font-weight: bold; }
+ul.facebook-feed .facebook-feed-from a { color: #3B5998; }
+ul.facebook-feed .facebook-feed-time { display: block; color: #666; clear: both; }
+
+ul.facebook-feed { list-style-type: none; margin: 0; padding: 0; background: none; }
+ul.facebook-feed li { list-style-type: none; margin: 0 0 10px 0; padding: 0; }
+ul.facebook-feed .facebook-note-picture { float: left; margin-right: 5px; margin-bottom: 2px; }
+ul.facebook-feed .facebook-note-title { font-weight: bold; }
+ul.facebook-feed .facebook-note-from a { color: #3B5998; }
+ul.facebook-feed .facebook-note-time { display: block; color: #666; clear: both; }
+
+.flex-container {
+    display: -ms-flexbox;
+    display: -webkit-flex;
+    display: flex;
+    -webkit-flex-direction: row;
+    -ms-flex-direction: row;
+    flex-direction: row;
+    -webkit-flex-wrap: nowrap;
+    -ms-flex-wrap: nowrap;
+    flex-wrap: nowrap;
+    -webkit-justify-content: center;
+    -ms-flex-pack: center;
+    justify-content: center;
+    -webkit-align-content: stretch;
+    -ms-flex-line-pack: stretch;
+    align-content: stretch;
+    -webkit-align-items: flex-start;
+    -ms-flex-align: start;
+    align-items: flex-start;
+}
+
+.flex-item {
+    -webkit-order: 0;
+    -ms-flex-order: 0;
+    order: 0;
+    -webkit-flex: 0 1 33%;
+    -ms-flex: 0 1 33%;
+    flex: 0 1 33%;
+    -webkit-align-self: auto;
+    -ms-flex-item-align: auto;
+    align-self: auto;
+    margin: 0 15px !important;
+    text-align: justify;
+}
+
+img.thumbnail.img-responsive {
+    display: block;
+    width: 50%;
+    height: auto;
+    margin: 15px auto;
+}

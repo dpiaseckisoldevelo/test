@@ -1,0 +1,35 @@
+<?php
+
+/**
+ * Implements hook_schema().
+ */
+function webform_auto_delete_schema() {
+  $schema = array();
+
+  $schema['webform_auto_delete'] = array(
+    'description' => 'Table for storing webform auto delete settings per webform.',
+    'fields' => array(
+      'nid' => array(
+        'description' => 'The node identifier of a webform.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'count' => array(
+        'description' => 'The number of units to wait until deleting a submission',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'units' => array(
+        'description' => 'The units of time: seconds, minutes, hours, etc.',
+        'type' => 'text',
+        'size' => 'small',
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('nid'),
+  );
+
+  return $schema;
+}

@@ -1,0 +1,1 @@
+Folder for public images pulled from Assemblas sd_news via assembla_pull module.

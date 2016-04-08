@@ -1,0 +1,78 @@
+/* Add here all your CSS customizations */
+
+/*Contact-webform-css
+
+#webform-client-form-6 {
+}
+
+
+#webform-component-name {
+ border:1px solid red;
+
+}*/
+
+
+/* Job-offers list styling */
+
+.benefit-list-heading i {
+    font-size: 40px;
+    line-height: 2em;
+}
+
+.benefit-list-heading {
+    text-align: center;
+}
+
+.grid-group-item .thumbnail2, .grid-group-item2 .thumbnail2 {
+    height: 180px;
+    word-wrap: break-word;
+}
+
+#benefits-first-row {
+    margin-bottom: 10px;
+}
+
+.career-apply {
+    font-size: 20px;
+    padding: 10px 20px 10px 20px;
+}
+
+.icon-blue {
+    color: #0088cc;
+    font-size: 25px;
+}
+
+.nograph {
+    list-style-type: none;
+}
+
+.hr-clear {
+    clear:both;
+}
+
+.lead-button {
+    width: 25%;
+    float: left;
+}
+
+.lead-div {
+    width: 70%;
+    float: left;
+    margin-right: 5%;
+}
+
+@media all and (max-width:600px) {
+    .lead-button {
+        width: 100%;
+        float: left;
+    }
+
+    .career-apply {
+        width:90%;
+    }
+
+    .lead-div {
+        width:100%;
+        float: left;
+    }
+}

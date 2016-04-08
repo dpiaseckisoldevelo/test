@@ -1,0 +1,175 @@
+<?php
+
+/**
+ * Implements hook_permission().
+ */
+function webform_auto_delete_permission() {
+  return array(
+    'admin webform auto delete' => array(
+      'title' => t('Administer Webform auto delete'),
+      'description' => t('Set up automatic deletion of webform submissions on all webforms.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter() for webform_configure_form().
+ */
+function webform_auto_delete_form_webform_configure_form_alter(&$form, &$form_state) {
+
+  if (!user_access('admin webform auto delete')) {
+    return;
+  }
+  
+  $nid =& $form['#node']->nid;
+
+  $form['#submit'][] = 'webform_auto_delete_form_webform_configure_form_submit';
+
+  $existing = _webform_auto_delete_existing_permissions($nid);
+
+  $form['webform_auto_delete'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Auto delete settings'),
+    '#weight' => -2.5,
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE,
+    '#tree' => TRUE,
+  );
+
+  $form['webform_auto_delete']['enable'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable auto delete'),
+    '#default_value' => !empty($existing) ? 1 : 0,
+  );
+
+  $form['webform_auto_delete']['container'] = array(
+    '#type' => 'container',
+    '#states' => array(
+      'visible' => array(':input[name="webform_auto_delete[enable]"]' => array('checked' => TRUE)),
+    ),
+    '#parents' => array('webform_auto_delete'),
+    '#attributes' => array('class' => array('container-inline')),
+  );
+
+  $form['webform_auto_delete']['container']['description'] = array(
+    '#markup' => t('Delete submissions to this webform after') . "&nbsp;",
+    '#theme_wrappers' => array('container'),
+  );
+
+  $form['webform_auto_delete']['container']['count'] = array(
+    '#type' => 'textfield',
+    '#size' => 8,
+    '#default_value' => isset($existing['count']) ? $existing['count'] : 0,
+  );
+
+  $form['webform_auto_delete']['container']['units'] = array(
+    '#type' => 'select',
+    '#options' => _webform_auto_delete_unit_options(),
+    '#default_value' => isset($existing['units']) ? $existing['units'] : 'years',
+  );
+}
+
+function _webform_auto_delete_unit_options() {
+	$options = array(
+	  t('seconds'),
+	  t('minutes'),
+	  t('hours'),
+	  t('days'),
+	  t('weeks'),
+	  t('years'),
+	);
+	return drupal_map_assoc($options);
+}
+
+/**
+ * Custom submit handler for webform_configure_form().
+ */
+function webform_auto_delete_form_webform_configure_form_submit(&$form, &$form_state) {
+  
+  $nid =& $form['#node']->nid;
+
+  db_delete('webform_auto_delete')
+    ->condition('nid', $nid)
+    ->execute();
+
+  if ($form_state['values']['webform_auto_delete']['enable'] && !empty($form_state['values']['webform_auto_delete']['count'])) {
+    $query = db_insert('webform_auto_delete')
+      ->fields(array('nid', 'count', 'units'))
+      ->values(array(
+      	'nid' => $nid,
+        'count' => $form_state['values']['webform_auto_delete']['count'],
+        'units' => $form_state['values']['webform_auto_delete']['units'],
+      ));
+    $query->execute();
+  }
+  
+}
+
+/**
+ * Fetch the auto delete settings for this webform by node ID.
+ *
+ * @param int $nid
+ *   The node ID of this webform.
+ *
+ * @return array
+ *   The auto delete settings for this webform.
+ */
+function _webform_auto_delete_existing_permissions($nid) {
+  $result = db_select('webform_auto_delete', 'a', array('fetch' => PDO::FETCH_ASSOC))
+    ->fields('a')
+    ->condition('a.nid', $nid)
+    ->execute()
+    ->fetchAll();
+  if (!empty($result[0])) {
+  	return $result[0];
+  }
+  return $result;
+}
+
+function _webform_auto_delete_existing_nids() {
+  $nids = array();
+  $result = db_select('webform_auto_delete', 'a')
+    ->fields('a', array('nid'))
+    ->execute();
+  foreach ($result as $record) {
+    $nids[] = $record->nid;
+  }
+  return $nids;
+}
+
+function webform_auto_delete_cron() {
+  // get list of webform nodes to check for deletions, nodes that have webform_auto_delete set
+  $nids = _webform_auto_delete_existing_nids();
+  // loop through the nodes
+  foreach ($nids as $nid) {
+    webform_auto_delete_old_submissions($nid);
+  }
+    // delete submission that are older than [count] [units]
+}
+
+function webform_auto_delete_old_submissions($nid) {
+  $node = node_load($nid);
+  module_load_include('inc', 'webform', 'includes/webform.submissions');
+  $settings = _webform_auto_delete_existing_permissions($nid);
+  watchdog('webform auto delete', var_export($settings, true), array(), WATCHDOG_DEBUG);
+  $sids = webform_auto_delete_get_old_sids($nid, $settings);
+  foreach ($sids as $sid) {
+    $submission = webform_get_submission($nid, $sid);
+    webform_submission_delete($node, $submission);
+  }
+}
+
+function webform_auto_delete_get_old_sids($nid, $settings) {
+  $sids = array();
+  $delay = strtotime('now - ' . $settings['count'] . ' ' . $settings['units']);
+  $result = db_select('webform_submissions', 's')
+    ->fields('s', array('sid'))
+    ->condition('s.nid', $nid)
+    ->condition('s.submitted', $delay, '<')
+    ->execute();
+  foreach ($result as $record) {
+    $sids[] = $record->sid;
+  }
+  watchdog('webform auto delete', var_export($sids, true), array(), WATCHDOG_DEBUG);
+  return $sids;
+}
